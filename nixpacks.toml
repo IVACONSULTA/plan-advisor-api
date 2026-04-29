@@ -1,0 +1,6 @@
+# Railway NIXPACKS configuration
+# Pins the Node.js version used during build and runtime.
+# https://nixpacks.com/docs/providers/node
+
+[variables]
+NODE_VERSION = "22"
