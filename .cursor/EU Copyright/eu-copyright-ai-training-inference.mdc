@@ -1,0 +1,267 @@
+---
+description: Copyright compliance rules for AI training data, inference-time document use, and General-Purpose AI (GPAI) model obligations under EU AI Act Art. 53 and DSM Directive Art. 4. Apply when designing AI pipelines that use third-party content at training or inference time.
+globs: agents/*.py, guardrails/*.py, utils/*.py, models/*.py, tests/*.py
+---
+
+# Copyright in AI Training and Inference
+
+## Legal Framework
+
+| Regulation | Article | Obligation |
+|---|---|---|
+| EU AI Act (EU) 2024/1689 | Art. 53(1)(c) | GPAI providers must comply with copyright law when training |
+| EU AI Act (EU) 2024/1689 | Art. 53(1)(d) | GPAI providers must publish a summary of training data |
+| DSM Directive (EU) 2019/790 | Art. 4 | TDM for commercial purposes — subject to opt-out |
+| DSM Directive (EU) 2019/790 | Art. 3 | TDM for research organisations — no opt-out |
+| InfoSoc Directive 2001/29/EC | Art. 2 | Reproduction right — applies at inference time too |
+
+---
+
+## 🤖 EU AI Act Art. 53 — GPAI Model Obligations
+
+### What Qualifies as a GPAI Model
+
+A **General-Purpose AI Model** (GPAI) under the EU AI Act (Art. 3(63)) is an AI model trained on large amounts of data using self-supervised learning that displays general functionality and can be used in a range of downstream tasks.
+
+**Examples:** OpenAI GPT-4o, Anthropic Claude, Meta Llama, Mistral — and fine-tuned derivatives.
+
+### Art. 53(1)(c) — Copyright Compliance Obligation
+
+**REQUIREMENT:** GPAI model providers must implement a **policy to comply with Union copyright law**, and in particular to:
+
+- Identify and respect Art. 4(3) opt-outs expressed by rightsholders
+- Not use content for training where the rightsholder has reserved their rights
+- Implement a **machine-readable opt-out check** for online sources
+
+```python
+# GPAI training pipeline — mandatory copyright gate
+class GPAITrainingCopyrightGate:
+    """
+    Implements EU AI Act Art. 53(1)(c) copyright compliance
+    for GPAI model training pipelines.
+    """
+
+    def screen_training_document(self, doc: dict) -> dict:
+        """Screen a document before including in training corpus."""
+        opt_out_detected, reason = self.check_ai_optout(doc)
+
+        if opt_out_detected:
+            return {
+                'include_in_training': False,
+                'reason': reason,
+                'legal_basis': 'DSM Directive Art. 4 opt-out / EU AI Act Art. 53(1)(c)',
+                'document_id': doc.get('id'),
+                'action': 'Exclude from training corpus. Log exclusion for transparency report.'
+            }
+
+        return {
+            'include_in_training': True,
+            'copyright_status': self.get_copyright_status(doc),
+            'citation_in_summary': True  # Required for Art. 53(1)(d) summary
+        }
+
+    def generate_training_data_summary(self, corpus: list) -> dict:
+        """
+        Generate Art. 53(1)(d) transparency summary of training data.
+        Must be publicly available.
+        """
+        return {
+            'total_documents': len(corpus),
+            'documents_excluded_opt_out': sum(
+                1 for d in corpus if d.get('excluded_reason') == 'ai_optout'
+            ),
+            'license_breakdown': self.aggregate_license_types(corpus),
+            'sources': self.aggregate_source_domains(corpus),
+            'opt_out_compliance_policy': (
+                'All documents were scanned for DSM Directive Art. 4 opt-out clauses '
+                'before inclusion. Documents with machine-readable or textual opt-outs '
+                'were excluded from the training corpus.'
+            )
+        }
+```
+
+### Art. 53(1)(d) — Training Data Transparency
+
+**REQUIREMENT:** GPAI providers must make publicly available a **sufficiently detailed summary** of the content used for training, including:
+
+- Types of data and sources used
+- Filtering and selection processes applied
+- Opt-out compliance policy and implementation
+
+**For systems using OpenAI, Anthropic, or other third-party GPAI models:**
+
+- These obligations apply to the **model provider** (OpenAI, Anthropic, etc.), not the integrator
+- Integrators must however ensure they use the model **legally** at inference time
+- Integrators must not **expand** the GPAI's training data with content that would violate Art. 53(1)(c)
+
+---
+
+## 📥 Copyright at Inference Time (RAG and Document Analysis)
+
+Inference-time use (sending document text to an LLM API) is **not training** — but it still involves:
+
+1. **Temporary reproduction** of the document text in the API request (Art. 5(1) transient copy)
+2. **Potential output reproduction** if the LLM reproduces verbatim text in its response
+
+### Rules for Inference-Time Use
+
+```python
+class InferenceTimeCopyrightGuard:
+    """
+    Implements copyright compliance for LLM inference calls
+    using third-party documents as context (RAG, document analysis).
+    """
+
+    def prepare_context_for_inference(
+        self, documents: list, copyright_results: list
+    ) -> dict:
+        """
+        Prepare documents for LLM inference with copyright constraints.
+        Only CLEAR and RESTRICTED documents may be sent to the LLM.
+        BLOCKED documents must never be included.
+        """
+        context_docs = []
+        excluded_docs = []
+
+        for doc, result in zip(documents, copyright_results):
+            if result['status'] == 'blocked':
+                # NEVER send blocked docs to LLM — EU AI Act Art. 53(1)(c)
+                excluded_docs.append({
+                    'filename': doc['filename'],
+                    'reason': 'AI opt-out detected — excluded from inference',
+                    'legal_basis': 'DSM Directive Art. 4 / EU AI Act Art. 53(1)(c)'
+                })
+                continue
+
+            context_docs.append({
+                'text': doc['text'],
+                'filename': doc['filename'],
+                'copyright_status': result['status'],
+                # Add paraphrase instruction for restricted docs
+                'processing_instruction': (
+                    'PARAPHRASE_ONLY — do not reproduce verbatim text'
+                    if result['status'] == 'restricted'
+                    else 'CITE_SOURCE — include document reference in output'
+                )
+            })
+
+        return {
+            'context_documents': context_docs,
+            'excluded_documents': excluded_docs,
+            'inference_permitted': len(context_docs) > 0
+        }
+
+    def validate_inference_output(self, output: str, restricted_docs: list) -> dict:
+        """
+        Post-inference validation: check output does not contain
+        verbatim excerpts from RESTRICTED documents.
+        Based on Infopaq doctrine (CJEU C-5/08) — 11 words threshold.
+        """
+        violations = []
+
+        for doc in restricted_docs:
+            # Check for verbatim passages exceeding 10 words
+            doc_sentences = self._extract_sentences(doc['text'])
+            for sentence in doc_sentences:
+                words = sentence.split()
+                if len(words) > 10 and sentence in output:
+                    violations.append({
+                        'document': doc['filename'],
+                        'verbatim_excerpt': sentence[:100] + '...',
+                        'violation': 'Verbatim reproduction of >10 words from RESTRICTED document',
+                        'legal_basis': 'Infopaq doctrine / InfoSoc Directive Art. 2'
+                    })
+
+        return {
+            'compliant': len(violations) == 0,
+            'violations': violations,
+            'action': (
+                'Remove verbatim excerpts and replace with paraphrased summaries'
+                if violations else None
+            )
+        }
+```
+
+---
+
+## 📤 Copyright in AI-Generated Output
+
+### What AI-Generated Content Does and Does Not Protect
+
+**Under current EU law (2026):**
+
+- AI-generated content **without human creative input** is **not protected by copyright**
+- AI-assisted content where a human made **creative choices** may be protected (the human holds the copyright)
+- The EU Commission has not yet enacted a specific framework for AI authorship (under review)
+
+### Rules for AI Output
+
+- **RULE**: Do not claim copyright over purely AI-generated text (e.g., generated summaries)
+- **RULE**: Label AI-generated content as such when presenting it to end users (EU AI Act Art. 50 transparency)
+- **RULE**: If AI output is based on copyrighted input content, the output may inherit the input's copyright constraints
+- **RULE**: AI-generated paraphrases of RESTRICTED documents are not independently copyrighted by the system
+
+---
+
+## 🏛️ GPAI Copyright Compliance Summary
+
+### For Systems Built on Top of GPAI Models (OpenAI, Claude, etc.)
+
+```python
+GPAI_INTEGRATOR_OBLIGATIONS = {
+    'must_comply_with': [
+        'DSM Directive Art. 4 opt-out at inference time',
+        'InfoSoc Directive Art. 2 — no verbatim reproduction in outputs',
+        'EU AI Act Art. 50 — AI disclosure in user-facing outputs',
+        'Infopaq doctrine — 11-word threshold for source excerpts',
+    ],
+    'not_responsible_for': [
+        'Training data copyright of the underlying GPAI model provider',
+        'Art. 53(1)(c) compliance of the GPAI model (responsibility of OpenAI/Anthropic/etc.)',
+    ],
+    'must_implement': [
+        'CopyrightChecker guardrail — before passing documents to LLM',
+        'Paraphrase instruction for RESTRICTED documents',
+        'Hard block for BLOCKED (opt-out) documents',
+        'Source citation in every extracted rule/plan',
+        'Output validation for verbatim reproduction',
+    ]
+}
+```
+
+---
+
+## 📋 AI Copyright Compliance Checklist
+
+### Before Fine-Tuning or RAG Index Building
+
+- [ ] **TDM opt-out scan**: All documents in the corpus scanned for Art. 4 opt-outs
+- [ ] **Opt-out exclusion log**: Excluded documents logged for transparency report
+- [ ] **License inventory**: All document licenses recorded (clear / restricted / blocked)
+- [ ] **Lawful access verification**: System has lawful access to all included content
+- [ ] **Art. 53(1)(d) summary**: Training data summary prepared for disclosure
+
+### Before Inference (Per-Request)
+
+- [ ] **Copyright pre-check**: `CopyrightChecker.check_documents()` runs before any LLM call
+- [ ] **BLOCKED doc gate**: Hard stop implemented — BLOCKED docs never reach LLM
+- [ ] **RESTRICTED instruction**: Paraphrase instruction injected into system prompt
+- [ ] **Source citation instruction**: Every LLM call includes attribution requirement
+
+### After Inference (Per-Response)
+
+- [ ] **Output validation**: Verify no verbatim text from RESTRICTED docs
+- [ ] **AI disclosure**: AI-generated output labeled as AI-generated (EU AI Act Art. 50)
+- [ ] **Audit log**: Log `processing_id`, documents used, copyright statuses per call
+- [ ] **Usage log**: Record inference call in `ai_usage_logs` for quota and audit
+
+---
+
+## 🚨 High-Risk Practices to Avoid
+
+- **NEVER** fine-tune a GPAI model on documents with Art. 4 opt-outs without first obtaining a license
+- **NEVER** index BLOCKED documents into a vector database or RAG system
+- **NEVER** present AI-generated summaries of RESTRICTED content without paraphrase validation
+- **NEVER** allow GPAI output to reproduce verbatim passages from RESTRICTED documents
+- **NEVER** omit AI disclosure in user-facing content (EU AI Act Art. 50)
+- **NEVER** claim copyright on purely AI-generated text in system responses

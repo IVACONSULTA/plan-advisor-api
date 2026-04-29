@@ -1,0 +1,346 @@
+---
+description: Risk classification guidelines for AI assistants when using or extending repository functionality. Provides decision frameworks for EU AI Act compliance when implementing new features or modifying existing AI agent capabilities.
+globs: agents/*.py, utils/*.py, tests/*.py, scripts/*.sh
+---
+
+# Risk Classification Guidelines for Repository Extensions
+
+## 🎯 Purpose and Scope
+
+These guidelines help determine the risk level and compliance requirements when:
+
+- Extending existing AI agent functionality
+- Adding new agent capabilities
+- Implementing new AI-powered features
+- Modifying agent behavior or decision-making
+- Integrating external AI services or models
+
+## 🚦 Quick Risk Assessment Decision Tree
+
+### Step 1: Initial Risk Screen
+
+```
+Will this functionality:
+├── Process biometric data for identification? → 🔴 HIGH-RISK / PROHIBITED
+├── Make decisions about people's rights/opportunities? → 🔴 HIGH-RISK
+├── Categorize people by sensitive characteristics? → 🔴 PROHIBITED
+├── Monitor or evaluate human behavior? → 🟡 MEDIUM-HIGH RISK
+├── Process personal data for decision-making? → 🟡 MEDIUM RISK
+├── Interact with users without AI disclosure? → 🟡 MEDIUM RISK
+└── Provide general information/assistance? → 🟢 LOW RISK
+```
+
+### Step 2: Prohibited Practices Check
+
+**🚫 IMMEDIATELY STOP if functionality involves:**
+
+- Biometric categorization by race, religion, politics, sexual orientation
+- Social scoring based on behavior or personal characteristics
+- Real-time biometric identification in public spaces
+- Emotional monitoring in workplace/educational contexts
+- Subliminal manipulation or dark patterns
+- Targeting vulnerabilities (age, disability, economic status)
+
+### Step 3: High-Risk Domain Check
+
+**🔴 HIGH-RISK if functionality is used in:**
+
+- Healthcare and medical decisions
+- Education (admissions, grading, monitoring)
+- Employment (hiring, promotion, performance evaluation)
+- Financial services (credit, insurance, loans)
+- Law enforcement support
+- Border control or migration services
+- Critical infrastructure management
+- Democratic processes or elections
+
+## 🔍 Detailed Risk Classification Framework
+
+### 🟢 LOW RISK - General AI Assistance
+
+**Characteristics:**
+
+- Provides information, explanations, or general assistance
+- Does not make decisions about individuals
+- Does not process personal data for decision-making
+- Limited to content generation, analysis, or recommendations
+
+**Requirements:**
+
+- ✅ AI disclosure (users must know they're interacting with AI)
+- ✅ Transparency about capabilities and limitations
+- ✅ Basic data protection measures
+- ✅ Human oversight available
+
+**Implementation Pattern:**
+
+```python
+def low_risk_ai_function(user_query):
+    """Low-risk AI functionality with basic compliance"""
+
+    # Always disclose AI nature
+    ai_disclosure = {
+        'ai_powered': True,
+        'capabilities': 'Information and assistance',
+        'limitations': 'No personal decisions made'
+    }
+
+    response = process_general_query(user_query)
+
+    return {
+        'response': response,
+        'ai_disclosure': ai_disclosure,
+        'risk_level': 'LOW'
+    }
+```
+
+### 🟡 MEDIUM RISK - Personal Data Processing
+
+**Characteristics:**
+
+- Processes personal data for functionality
+- Makes recommendations affecting individuals
+- Personalizes content or services
+- Analyzes user behavior patterns
+
+**Requirements:**
+
+- ✅ All LOW RISK requirements
+- ✅ GDPR compliance (consent, data minimization, purpose limitation)
+- ✅ Data protection impact assessment
+- ✅ Enhanced transparency and explainability
+- ✅ User control and opt-out mechanisms
+- ✅ Regular bias testing
+
+**Implementation Pattern:**
+
+```python
+def medium_risk_ai_function(user_data, purpose):
+    """Medium-risk AI functionality with enhanced compliance"""
+
+    # Validate consent and purpose
+    if not validate_consent(user_data, purpose):
+        raise ComplianceError("Missing valid consent")
+
+    # Apply data minimization
+    minimal_data = minimize_data_for_purpose(user_data, purpose)
+
+    # Process with bias monitoring
+    result = process_with_bias_monitoring(minimal_data)
+
+    return {
+        'result': result,
+        'explanation': generate_explanation(result),
+        'data_usage': get_data_usage_info(),
+        'opt_out_available': True,
+        'risk_level': 'MEDIUM'
+    }
+```
+
+### 🔴 HIGH RISK - Decision-Making Systems
+
+**Characteristics:**
+
+- Makes decisions significantly affecting individuals
+- Used in sensitive domains (health, education, employment)
+- Processes biometric or special category data
+- Influences access to services or opportunities
+
+**Requirements:**
+
+- ✅ All MEDIUM RISK requirements
+- ✅ Fundamental rights impact assessment
+- ✅ Enhanced human oversight (meaningful human control)
+- ✅ Audit trail and logging
+- ✅ Regular accuracy and bias testing
+- ✅ Incident reporting procedures
+- ✅ CE marking and conformity assessment (if applicable)
+- ✅ Registration in EU database
+
+**Implementation Pattern:**
+
+```python
+def high_risk_ai_function(input_data, decision_context):
+    """High-risk AI functionality with full compliance"""
+
+    # Conduct fundamental rights assessment
+    rights_impact = assess_fundamental_rights_impact(decision_context)
+    if rights_impact['risk_level'] == 'UNACCEPTABLE':
+        raise ComplianceError("Unacceptable fundamental rights risk")
+
+    # Require human oversight
+    if requires_human_oversight(decision_context):
+        return request_human_review(input_data, decision_context)
+
+    # Full audit logging
+    audit_logger.log_decision_process(input_data, decision_context)
+
+    # AI decision with explanation
+    decision = make_ai_decision(input_data)
+    explanation = generate_detailed_explanation(decision, input_data)
+
+    return {
+        'decision': decision,
+        'explanation': explanation,
+        'confidence': calculate_confidence(decision),
+        'human_review_available': True,
+        'appeal_process': get_appeal_process_info(),
+        'risk_level': 'HIGH'
+    }
+```
+
+## 🛠️ Implementation Guidelines by Repository Context
+
+### When Extending Agent Capabilities
+
+```python
+def assess_agent_extension_risk(new_capability):
+    """Assess risk when adding new agent capabilities"""
+
+    risk_factors = {
+        'processes_personal_data': check_personal_data_processing(new_capability),
+        'makes_decisions_about_people': check_individual_impact(new_capability),
+        'sensitive_domain': check_sensitive_domain_usage(new_capability),
+        'biometric_processing': check_biometric_involvement(new_capability),
+        'vulnerable_groups': check_vulnerable_group_impact(new_capability)
+    }
+
+    # Calculate risk level
+    if any(risk_factors[key] for key in ['biometric_processing']):
+        return 'PROHIBITED_OR_HIGH_RISK'
+    elif risk_factors['makes_decisions_about_people'] or risk_factors['sensitive_domain']:
+        return 'HIGH_RISK'
+    elif risk_factors['processes_personal_data']:
+        return 'MEDIUM_RISK'
+    else:
+        return 'LOW_RISK'
+```
+
+### When Adding External AI Services
+
+```python
+def assess_external_ai_integration(service_info):
+    """Assess risk when integrating external AI services"""
+
+    integration_risks = {
+        'data_sharing': assess_data_sharing_risk(service_info),
+        'service_compliance': verify_service_compliance(service_info),
+        'data_location': check_data_processing_location(service_info),
+        'purpose_limitation': verify_purpose_limitation(service_info),
+        'liability_chain': assess_liability_implications(service_info)
+    }
+
+    return {
+        'integration_allowed': all_risks_acceptable(integration_risks),
+        'additional_safeguards': get_required_safeguards(integration_risks),
+        'monitoring_requirements': get_monitoring_requirements(integration_risks)
+    }
+```
+
+### When Modifying Existing Functionality
+
+```python
+def assess_modification_impact(original_function, proposed_changes):
+    """Assess compliance impact of modifying existing functionality"""
+
+    original_risk = classify_function_risk(original_function)
+    new_risk = classify_function_risk(apply_changes(original_function, proposed_changes))
+
+    if new_risk > original_risk:
+        return {
+            'impact': 'RISK_INCREASE',
+            'new_requirements': get_additional_requirements(new_risk),
+            'reassessment_needed': True
+        }
+
+    return {
+        'impact': 'NO_RISK_INCREASE',
+        'validation_needed': validate_existing_compliance(original_function)
+    }
+```
+
+## 📋 Pre-Implementation Compliance Checklist
+
+### Before Adding Any AI Functionality
+
+- [ ] **Prohibited Practices Check**: Verify no prohibited AI practices involved
+- [ ] **Risk Classification**: Determine risk level using decision tree
+- [ ] **Domain Assessment**: Check if functionality touches sensitive domains
+- [ ] **Data Impact Analysis**: Assess personal data processing requirements
+- [ ] **Legal Basis Verification**: Ensure valid legal basis for data processing
+- [ ] **Human Oversight Planning**: Design appropriate human oversight mechanisms
+
+### During Implementation
+
+- [ ] **AI Disclosure Implementation**: Ensure users know they're interacting with AI
+- [ ] **Transparency Features**: Implement explanation and information provision
+- [ ] **Data Protection Measures**: Apply GDPR-compliant data handling
+- [ ] **Bias Monitoring**: Implement bias detection and mitigation
+- [ ] **Audit Logging**: Log decisions and processing activities
+- [ ] **Error Handling**: Implement compliance-aware error handling
+
+### Post-Implementation
+
+- [ ] **Compliance Testing**: Validate compliance measures effectiveness
+- [ ] **Documentation**: Complete technical and compliance documentation
+- [ ] **Registration**: Register high-risk systems in EU database if required
+- [ ] **Monitoring Setup**: Implement ongoing compliance monitoring
+- [ ] **Incident Procedures**: Establish incident detection and response
+- [ ] **Regular Review**: Schedule periodic compliance assessments
+
+## 🚨 Red Flags - Stop Implementation Immediately
+
+**Functionality that involves:**
+
+- Categorizing people by protected characteristics
+- Making employment decisions without human oversight
+- Processing children's data for behavioral analysis
+- Real-time emotion recognition in workplace/school
+- Cross-referencing personal data for social scoring
+- Biometric identification without explicit consent
+- Manipulative or deceptive AI interactions
+- Discriminatory targeting of vulnerable groups
+
+## 🔄 Ongoing Compliance Monitoring
+
+### Regular Assessment Schedule
+
+- **Weekly**: Review new functionality for compliance issues
+- **Monthly**: Assess user feedback and complaints for compliance concerns
+- **Quarterly**: Conduct comprehensive risk reassessment
+- **Annually**: Update compliance measures based on regulatory changes
+
+### Key Monitoring Metrics
+
+- User complaints about AI transparency
+- Bias detection alerts and false positive/negative rates
+- Data processing volume and purpose adherence
+- Human oversight intervention frequency
+- Incident reports and resolution times
+
+### Compliance Alert Triggers
+
+- Unusual patterns in AI decision-making
+- Increased user complaints about fairness
+- Technical errors affecting transparency
+- Changes in data processing patterns
+- External compliance requirement updates
+
+## 📞 Escalation Procedures
+
+### When to Escalate
+
+1. **Immediate Escalation**: Prohibited practices detected
+2. **Urgent Escalation**: High-risk functionality without proper safeguards
+3. **Standard Escalation**: Medium-risk functionality needing additional review
+4. **Documentation**: Low-risk functionality requiring compliance documentation
+
+### Escalation Actions
+
+- **STOP**: Immediately halt implementation
+- **REVIEW**: Conduct additional compliance assessment
+- **ENHANCE**: Implement additional safeguards
+- **DOCUMENT**: Complete compliance documentation
+- **MONITOR**: Increase monitoring and oversight
+
+This framework ensures that any extensions or modifications to the repository maintain full EU AI Act compliance while enabling innovative AI functionality development.

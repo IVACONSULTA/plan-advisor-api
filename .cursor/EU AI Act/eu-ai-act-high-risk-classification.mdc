@@ -1,0 +1,350 @@
+---
+description: EU AI Act high-risk AI systems classification rules and requirements. Apply these rules when determining if an AI system is high-risk and implementing appropriate compliance measures based on Article 6 of the AI Act.
+#globs: **/*.py, **/*.js, **/*.ts, **/*.java, **/*.cpp, **/*.c, **/*.go, **/*.rs
+globs: agents/*.py, utils/*.py, tests/*.py, scripts/*.sh
+---
+
+# EU AI Act High-Risk AI Systems Classification Rules
+
+## High-Risk Classification Criteria (Article 6)
+
+### Safety Component Classification (Annex I)
+
+- **HIGH-RISK**: AI systems intended as safety components of products covered by Union harmonisation legislation
+- **HIGH-RISK**: AI systems that are themselves products covered by Union harmonisation legislation listed in Annex I
+
+#### Union Harmonisation Legislation (Annex I) Includes:
+
+- **Medical Devices**: Medical devices and in vitro diagnostic medical devices
+- **Aviation Safety**: Aircraft, engines, and equipment under aviation regulations
+- **Automotive**: Motor vehicles, trailers, and systems/components/parts
+- **Maritime Equipment**: Equipment intended for use on ships
+- **Rail Transport**: Interoperability of rail systems
+- **Machinery**: Machinery and related safety requirements
+- **Personal Protective Equipment**: Equipment designed to protect health and safety
+- **Construction Products**: Products for permanent incorporation in construction works
+- **Toys**: Toys and their safety requirements
+- **Recreational Craft**: Boats and watercraft for recreational purposes
+- **Radio Equipment**: Radio equipment and telecommunications
+- **Pressure Equipment**: Pressure vessels and equipment
+
+#### Requirements for Annex I Systems:
+
+- **REQUIREMENT**: Must undergo third-party conformity assessment before market placement
+- **REQUIREMENT**: Must comply with all applicable Union harmonisation legislation
+- **REQUIREMENT**: Must meet safety standards and requirements
+- **REQUIREMENT**: CE marking required where applicable
+
+### Annex III High-Risk Systems (Comprehensive List)
+
+#### 1. Biometric Identification and Categorisation Systems
+
+- **HIGH-RISK**: Remote biometric identification systems (except verification-only)
+- **HIGH-RISK**: Biometric categorisation systems based on sensitive attributes:
+  - Race, ethnicity, gender, political opinions, religious beliefs
+  - Sexual orientation, disabilities, social origin
+- **HIGH-RISK**: Emotion recognition systems in workplace and educational institutions
+- **ALWAYS HIGH-RISK**: Any system performing profiling of natural persons
+
+#### 2. Critical Infrastructure Management
+
+- **HIGH-RISK**: AI systems as safety components in critical digital infrastructure
+- **HIGH-RISK**: Road traffic management and control systems
+- **HIGH-RISK**: Water, gas, electricity supply management systems
+- **HIGH-RISK**: Digital infrastructure for public services
+
+#### 3. Education and Vocational Training
+
+- **HIGH-RISK**: AI systems determining access or admission to educational institutions
+- **HIGH-RISK**: Systems evaluating learning outcomes in educational institutions
+- **HIGH-RISK**: Systems monitoring student behavior during tests
+- **HIGH-RISK**: AI tutoring systems affecting educational progression
+
+#### 4. Employment and Workers Management
+
+- **HIGH-RISK**: AI systems for recruitment (CV screening, interview assessment)
+- **HIGH-RISK**: Systems making promotion, termination, or task allocation decisions
+- **HIGH-RISK**: Systems monitoring worker behavior and performance
+- **HIGH-RISK**: Systems affecting self-employment access
+
+#### 5. Access to Essential Services
+
+- **HIGH-RISK**: Credit and loan assessment systems (creditworthiness, scoring)
+- **HIGH-RISK**: Insurance risk assessment and pricing (life, health insurance)
+- **HIGH-RISK**: Public assistance and benefits evaluation
+- **HIGH-RISK**: Emergency service dispatching and prioritization
+
+#### 6. Law Enforcement
+
+- **HIGH-RISK**: Individual risk assessment (victim risk, offending risk)
+- **HIGH-RISK**: Polygraph and similar assessment tools
+- **HIGH-RISK**: Evidence evaluation and reliability assessment
+- **HIGH-RISK**: Criminal investigation profiling systems
+
+#### 7. Migration, Asylum and Border Control
+
+- **HIGH-RISK**: Risk assessment for individuals crossing borders
+- **HIGH-RISK**: Asylum and visa application processing systems
+- **HIGH-RISK**: Border control and identity verification systems
+
+#### 8. Administration of Justice and Democratic Processes
+
+- **HIGH-RISK**: Judicial decision support systems
+- **HIGH-RISK**: Election outcome influence systems
+- **HIGH-RISK**: Voting behavior analysis and targeting systems
+
+- **REQUIREMENT**: All Annex III systems must comply with high-risk AI system requirements
+
+## Exceptions to High-Risk Classification
+
+### Narrow Procedural Tasks
+
+- **NOT HIGH-RISK**: AI systems performing narrow procedural tasks
+- **REQUIREMENT**: Task must be clearly defined and limited in scope
+- **REQUIREMENT**: Must not involve significant decision-making authority
+- **REQUIREMENT**: Must not pose significant risk to health, safety, or fundamental rights
+- **REQUIREMENT**: Must not materially influence decision outcomes
+
+### Human Activity Improvement
+
+- **NOT HIGH-RISK**: AI systems intended to improve results of previously completed human activities
+- **REQUIREMENT**: Human activity must be completed before AI intervention
+- **REQUIREMENT**: AI system only enhances or optimizes existing human work
+- **REQUIREMENT**: Must not replace human decision-making
+- **REQUIREMENT**: Must not pose significant risk to health, safety, or fundamental rights
+
+### Pattern Detection and Analysis
+
+- **NOT HIGH-RISK**: AI systems detecting decision-making patterns or deviations
+- **REQUIREMENT**: Must not replace or influence previously completed human assessment
+- **REQUIREMENT**: Must include proper human review mechanisms
+- **REQUIREMENT**: Must not make autonomous decisions based on pattern analysis
+- **REQUIREMENT**: Must not pose significant risk to health, safety, or fundamental rights
+
+### Preparatory Tasks
+
+- **NOT HIGH-RISK**: AI systems performing preparatory tasks for assessments
+- **REQUIREMENT**: Task must be preparatory in nature, not final assessment
+- **REQUIREMENT**: Must be related to use cases listed in Annex III
+- **REQUIREMENT**: Must not make final decisions or recommendations
+- **REQUIREMENT**: Must not pose significant risk to health, safety, or fundamental rights
+
+### Profiling Exception
+
+- **ALWAYS HIGH-RISK**: AI systems performing profiling of natural persons
+- **REQUIREMENT**: No exceptions for profiling systems
+- **REQUIREMENT**: Must comply with all high-risk AI system requirements
+- **REQUIREMENT**: Must implement additional privacy and data protection measures
+- **REQUIREMENT**: Must conduct fundamental rights impact assessment
+
+## Documentation Requirements
+
+### Assessment Documentation
+
+- **REQUIREMENT**: Document assessment when claiming system is not high-risk
+- **REQUIREMENT**: Assessment must be completed before market placement
+- **REQUIREMENT**: Documentation must be comprehensive and detailed
+- **REQUIREMENT**: Must justify why system does not pose significant risk
+- **REQUIREMENT**: Must include risk analysis and mitigation measures
+
+### Registration Obligations (Article 49 Enhanced)
+
+- **REQUIREMENT**: Register system in EU database (Article 49(2)) before market placement
+- **REQUIREMENT**: Provide comprehensive registration information including:
+  - Provider details and contact information
+  - AI system description and intended use
+  - High-risk classification justification
+  - Conformity assessment information
+  - CE marking details (where applicable)
+  - Post-market monitoring information
+- **REQUIREMENT**: Maintain registration information accuracy and currency
+- **REQUIREMENT**: Notify authorities of any changes to system or classification
+- **REQUIREMENT**: Provide assessment documentation upon authority request
+- **REQUIREMENT**: Cooperate fully with competent authorities
+
+### Authority Cooperation
+
+- **REQUIREMENT**: Provide documentation to national competent authorities upon request
+- **REQUIREMENT**: Respond to authority inquiries promptly
+- **REQUIREMENT**: Maintain documentation for inspection
+- **REQUIREMENT**: Implement corrective actions when required
+- **REQUIREMENT**: Report compliance status regularly
+
+## Risk Assessment Framework
+
+### Health and Safety Risks
+
+- **ASSESSMENT**: Evaluate potential harm to physical health
+- **ASSESSMENT**: Evaluate potential harm to mental health
+- **ASSESSMENT**: Evaluate potential safety hazards
+- **ASSESSMENT**: Evaluate potential environmental risks
+- **REQUIREMENT**: Implement appropriate risk mitigation measures
+
+### Fundamental Rights Risks
+
+- **ASSESSMENT**: Evaluate impact on privacy rights
+- **ASSESSMENT**: Evaluate impact on non-discrimination
+- **ASSESSMENT**: Evaluate impact on freedom of expression
+- **ASSESSMENT**: Evaluate impact on other fundamental rights
+- **REQUIREMENT**: Implement fundamental rights safeguards
+
+### Decision-Making Influence
+
+- **ASSESSMENT**: Evaluate extent of AI influence on decisions
+- **ASSESSMENT**: Evaluate human oversight capabilities
+- **ASSESSMENT**: Evaluate decision transparency
+- **ASSESSMENT**: Evaluate accountability mechanisms
+- **REQUIREMENT**: Ensure meaningful human control
+
+## Implementation Guidelines
+
+### Classification Process
+
+- **STEP 1**: Determine if system falls under Union harmonisation legislation
+- **STEP 2**: Check if system is listed in Annex III
+- **STEP 3**: Evaluate if any exceptions apply
+- **STEP 4**: Assess risk level and potential harm
+- **STEP 5**: Document assessment and decision
+
+### Compliance Planning
+
+- **PLANNING**: Identify applicable requirements based on classification
+- **PLANNING**: Develop compliance roadmap
+- **PLANNING**: Allocate resources for compliance implementation
+- **PLANNING**: Establish monitoring and review processes
+- **PLANNING**: Train staff on classification requirements
+
+### Documentation Standards
+
+- **STANDARDS**: Use clear and comprehensive language
+- **STANDARDS**: Include technical specifications and capabilities
+- **STANDARDS**: Document risk assessment methodology
+- **STANDARDS**: Include mitigation measures and safeguards
+- **STANDARDS**: Maintain version control and updates
+
+## Monitoring and Updates
+
+### Regular Review
+
+- **REQUIREMENT**: Review classification annually
+- **REQUIREMENT**: Update assessment when system changes
+- **REQUIREMENT**: Monitor regulatory updates and guidance
+- **REQUIREMENT**: Assess new risks as they emerge
+- **REQUIREMENT**: Update documentation accordingly
+
+### Market Surveillance
+
+- **REQUIREMENT**: Cooperate with market surveillance authorities
+- **REQUIREMENT**: Provide requested information and documentation
+- **REQUIREMENT**: Implement corrective actions when required
+- **REQUIREMENT**: Report incidents and non-compliance
+- **REQUIREMENT**: Maintain compliance records
+
+### Commission Guidelines and Future Updates (Articles 96, 97)
+
+#### Commission Guidelines (Article 96)
+
+- **TIMELINE**: Guidelines expected by 2 February 2026
+- **CONTENT**: Practical implementation specifications for Article 6
+- **SCOPE**: Comprehensive list of high-risk and non-high-risk use cases
+- **CONSULTATION**: European Artificial Intelligence Board involvement
+- **PURPOSE**: Clarify practical application of classification rules
+
+#### Delegated Acts and Amendments (Article 97)
+
+- **AUTHORITY**: Commission empowered to amend Article 6.3 exception conditions
+- **ADDING CONDITIONS**: Based on concrete evidence of Annex III systems that don't pose significant risks
+- **REMOVING CONDITIONS**: When necessary to maintain protection levels
+- **SAFEGUARDS**: Amendments must not decrease overall protection level
+- **CONSISTENCY**: Must align with other delegated acts and market developments
+
+#### Annex III Amendments (Article 7)
+
+- **COMMISSION POWER**: Authority to amend Annex III high-risk systems list
+- **CRITERIA**: Based on technological developments and emerging risks
+- **PROCESS**: Delegated acts procedure with expert consultation
+- **TIMELINE**: Regular reviews and updates as needed
+
+### Guidance Compliance Implementation
+
+- **REQUIREMENT**: Follow Commission guidelines when available (February 2026)
+- **REQUIREMENT**: Use practical examples provided by Commission
+- **REQUIREMENT**: Stay updated on delegated acts and amendments
+- **REQUIREMENT**: Implement changes required by regulatory updates
+- **REQUIREMENT**: Maintain consistency with evolving requirements
+
+## Sector-Specific Considerations
+
+### Critical Infrastructure
+
+- **HIGH-RISK**: AI systems in energy, transport, water, health, financial services
+- **REQUIREMENT**: Implement enhanced security measures
+- **REQUIREMENT**: Ensure system resilience and reliability
+- **REQUIREMENT**: Conduct comprehensive risk assessments
+- **REQUIREMENT**: Implement incident response procedures
+
+### Education and Employment
+
+- **HIGH-RISK**: AI systems in educational institutions and workplace
+- **REQUIREMENT**: Ensure fairness and non-discrimination
+- **REQUIREMENT**: Implement transparency measures
+- **REQUIREMENT**: Provide clear explanations for decisions
+- **REQUIREMENT**: Enable human oversight and intervention
+
+### Law Enforcement and Justice
+
+- **HIGH-RISK**: AI systems used by law enforcement and judicial authorities
+- **REQUIREMENT**: Implement strict privacy protections
+- **REQUIREMENT**: Ensure procedural fairness
+- **REQUIREMENT**: Maintain audit trails
+- **REQUIREMENT**: Enable accountability and oversight
+
+### Healthcare and Medical Devices
+
+- **HIGH-RISK**: AI systems in medical devices and healthcare applications
+- **REQUIREMENT**: Comply with medical device regulations
+- **REQUIREMENT**: Ensure patient safety and data protection
+- **REQUIREMENT**: Implement clinical validation procedures
+- **REQUIREMENT**: Maintain medical device quality standards
+
+## Compliance Checklist
+
+### Pre-Development
+
+- [ ] Determine applicable Union harmonisation legislation
+- [ ] Check Annex III classification
+- [ ] Assess potential exceptions
+- [ ] Conduct preliminary risk assessment
+- [ ] Plan compliance approach
+
+### During Development
+
+- [ ] Implement appropriate safeguards
+- [ ] Design for transparency and explainability
+- [ ] Ensure human oversight capabilities
+- [ ] Implement data protection measures
+- [ ] Create comprehensive documentation
+
+### Pre-Market
+
+- [ ] Complete final risk assessment
+- [ ] Document classification decision
+- [ ] Register system in EU database
+- [ ] Prepare for authority inspections
+- [ ] Implement monitoring systems
+
+### Post-Market
+
+- [ ] Monitor system performance
+- [ ] Review classification annually
+- [ ] Update documentation as needed
+- [ ] Report to authorities as required
+- [ ] Maintain compliance records
+
+### Ongoing Compliance
+
+- [ ] Stay updated on regulatory changes
+- [ ] Implement required updates
+- [ ] Conduct regular audits
+- [ ] Train staff on requirements
+- [ ] Maintain documentation standards

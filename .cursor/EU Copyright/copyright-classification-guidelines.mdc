@@ -1,0 +1,248 @@
+---
+description: Copyright clearance classification guidelines for AI systems processing third-party documents and data. Provides decision frameworks for EU copyright compliance when ingesting, analyzing, or reproducing content from external sources.
+globs: agents/*.py, guardrails/*.py, utils/*.py, tools/*.py, tests/*.py
+---
+
+# Copyright Clearance Classification Guidelines
+
+## 🎯 Purpose and Scope
+
+These guidelines determine the copyright clearance level and processing constraints when:
+
+- Ingesting third-party documents (PDF, DOCX, XLSX, TXT, MD) into an AI pipeline
+- Extracting text for LLM analysis or training
+- Reproducing excerpts in AI outputs or system responses
+- Storing, indexing, or redistributing third-party content
+- Using content as context for AI inference (RAG, document analysis)
+
+---
+
+## 🚦 Quick Clearance Decision Tree
+
+### Step 1: Initial Copyright Screen
+
+```
+Is the document protected by copyright?
+├── Public domain (pre-1925 works, government publications) → 🟢 CLEAR
+├── Explicitly licensed (CC0, CC BY, Open Government) → 🟢 CLEAR with attribution
+├── Explicitly licensed with conditions (CC BY-SA, CC BY-NC) → 🟡 RESTRICTED
+├── Internal/proprietary document (no external IP) → 🟡 RESTRICTED (internal only)
+├── Third-party commercial document → 🔴 CHECK for opt-out
+└── Unknown / no license stated → 🔴 ASSUME PROTECTED
+```
+
+### Step 2: TDM Opt-Out Check (DSM Directive Art. 4)
+
+```
+Does the document contain an AI/TDM opt-out clause?
+├── YES — explicit AI opt-out detected → 🚫 BLOCKED (HTTP 451)
+├── YES — TDM restriction detected → 🚫 BLOCKED (HTTP 451)
+├── NO — but "All Rights Reserved" present → 🟡 RESTRICTED (paraphrase only)
+├── NO — document is "clear" → 🟢 PERMITTED (with citation obligation)
+└── UNCLEAR — cannot be determined → 🟡 RESTRICTED (treat as protected)
+```
+
+### Step 3: Use-Case Scope Check
+
+```
+How will the content be used?
+├── Read/index for research (non-commercial) → DSM Art. 3 may apply → 🟢
+├── Commercial TDM (no opt-out present) → DSM Art. 4 may apply → 🟢
+├── Extract factual rules only (no verbatim) → 🟢 PERMITTED
+├── Reproduce verbatim passages in output → 🔴 REQUIRES LICENSE
+├── Store raw text in database/RAG system → 🟡 RESTRICTED
+└── Redistribute full document to third parties → 🔴 REQUIRES LICENSE
+```
+
+---
+
+## 🔍 Detailed Clearance Classification
+
+### 🟢 CLEAR — Unrestricted Processing
+
+**Characteristics:**
+
+- Document is in the public domain
+- Explicit open license (CC0, CC BY, Open Government Licence)
+- Internal document with no third-party IP
+- Factual data (prices, dates, transaction volumes) without creative expression
+
+**Legal basis:**
+
+- Public domain: Berne Convention (70 years post-death of author)
+- Open licenses: Contractual permission from rightsholder
+- Facts: Not protected by copyright (CJEU case law — *Infopaq*, C‑5/08)
+
+**Requirements:**
+
+- ✅ Cite source document in all extracted rules/plans
+- ✅ Log document metadata (filename, source URL, license) for audit
+- ✅ Do not imply verbatim reproduction even for CLEAR documents
+- ✅ Respect attribution conditions of open licenses
+
+**Implementation Pattern:**
+
+```python
+def process_clear_document(doc: dict) -> dict:
+    """Process a copyright-clear document."""
+    return {
+        'content': extract_text(doc),
+        'copyright_status': 'clear',
+        'citation_required': True,
+        'verbatim_allowed': False,  # paraphrase still preferred
+        'source_reference': {
+            'filename': doc['filename'],
+            'source_url': doc.get('source_url'),
+            'declared_license': doc.get('declared_license', 'public_domain')
+        }
+    }
+```
+
+---
+
+### 🟡 RESTRICTED — Conditional Processing
+
+**Characteristics:**
+
+- "All Rights Reserved" present but no explicit AI opt-out
+- Conditionally licensed (CC BY-SA, CC BY-NC)
+- Internal/confidential documents with potential third-party content
+- Source URL accessible but no explicit license declared
+
+**Legal basis:**
+
+- InfoSoc Directive 2001/29/EC — reproduction right held by author (Art. 2)
+- DSM Directive Art. 4 TDM exception applies **only if** no opt-out exercised
+- Factual information remains unprotected; creative expression does not
+
+**Requirements:**
+
+- ✅ Extract only factual, non-verbatim information
+- ✅ Paraphrase all excerpts — never quote verbatim
+- ✅ Log copyright restriction in `documents.copyright_status = 'restricted'`
+- ✅ Instruct LLM explicitly: "paraphrase factual rules, do not reproduce verbatim text"
+- ✅ Store `source_excerpt` as paraphrased summary, not direct quote
+- ❌ Do not redistribute the full document
+- ❌ Do not store raw text in publicly accessible systems
+
+**Implementation Pattern:**
+
+```python
+def process_restricted_document(doc: dict) -> dict:
+    """Process a copyright-restricted document with paraphrase constraint."""
+    return {
+        'content': extract_text(doc),
+        'copyright_status': 'restricted',
+        'citation_required': True,
+        'verbatim_allowed': False,
+        'paraphrase_required': True,
+        'llm_instruction': (
+            "This document has reproduction restrictions under InfoSoc Directive 2001/29/EC. "
+            "Extract only factual information (prices, rules, thresholds). "
+            "Do NOT reproduce verbatim text. Paraphrase all excerpts."
+        ),
+        'source_reference': {
+            'filename': doc['filename'],
+            'restriction_type': 'reproduction_rights',
+            'legal_basis': 'InfoSoc Directive 2001/29/EC'
+        }
+    }
+```
+
+---
+
+### 🚫 BLOCKED — Processing Prohibited
+
+**Characteristics:**
+
+- Document contains an explicit AI/TDM opt-out clause (DSM Art. 4 opt-out)
+- Rightsholder has machine-readable opt-out (robots.txt, metadata)
+- Document marked with copyright restriction that prohibits AI processing
+
+**Legal basis:**
+
+- DSM Directive (EU) 2019/790, Art. 4 — TDM exception is **revocable** when rightsholder expressly opts out
+- EU AI Act (EU) 2024/1689, Art. 53(1)(c) — AI providers must respect copyright law
+- InfoSoc Directive 2001/29/EC, Art. 2 — reproduction right cannot be bypassed
+
+**Requirements:**
+
+- 🚫 **STOP processing immediately** — do not pass to LLM
+- 🚫 Do not extract, index, or store text from blocked documents
+- ✅ Return HTTP 451 (Unavailable For Legal Reasons)
+- ✅ Log the opt-out detection with the matched pattern for audit
+- ✅ Notify Admin that manual review is required
+- ✅ Update `documents.copyright_status = 'blocked'` with reason
+
+**Implementation Pattern:**
+
+```python
+def handle_blocked_document(doc: dict, matched_pattern: str) -> dict:
+    """Refuse AI processing for documents with explicit opt-out."""
+    return {
+        'error': 'copyright_restriction',
+        'blocked': True,
+        'http_status': 451,  # 451 Unavailable For Legal Reasons
+        'reason': (
+            f"Document '{doc['filename']}' contains an explicit AI opt-out clause "
+            f"under DSM Directive Art. 4. Detected pattern: '{matched_pattern}'. "
+            f"AI processing is not permitted."
+        ),
+        'legal_basis': 'DSM Directive (EU) 2019/790, Art. 4 — opt-out exercised by rightsholder',
+        'action_required': (
+            'Admin must review this document manually and input any applicable '
+            'rules without AI assistance.'
+        ),
+        'copyright_status': 'blocked'
+    }
+```
+
+---
+
+## 📋 Pre-Ingestion Compliance Checklist
+
+### Before Processing Any Third-Party Document
+
+- [ ] **Source identification**: Is the document's origin and authorship known?
+- [ ] **License check**: Is there an explicit license or public domain declaration?
+- [ ] **AI opt-out scan**: Run `CopyrightChecker` on first 3,000 chars for opt-out patterns
+- [ ] **Reproduction rights scan**: Check for "All Rights Reserved" and similar phrases
+- [ ] **Scope validation**: What will the extracted content be used for?
+- [ ] **Metadata logging**: Record `filename`, `source_url`, `declared_license`, `copyright_status`
+
+### During LLM Processing
+
+- [ ] **Instruction injection**: Include copyright constraint in LLM system prompt for RESTRICTED docs
+- [ ] **Output validation**: Verify LLM output contains no verbatim excerpts from RESTRICTED docs
+- [ ] **Citation enforcement**: Every extracted rule/plan must reference its source document
+- [ ] **Confidence tracking**: Log confidence scores for traceability
+
+### Post-Processing
+
+- [ ] **Audit trail**: Log `processing_id`, `copyright_status`, and guardrail results per document
+- [ ] **Status update**: Update `documents.copyright_status` in the database
+- [ ] **Blocked document notification**: Alert Admin for all BLOCKED documents
+
+---
+
+## 🚨 Red Flags — Stop Processing Immediately
+
+**Patterns that require BLOCKED classification:**
+
+- `"expressly prohibits"` + `"AI"` or `"artificial intelligence"`
+- `"text and data mining"` + `"prohibited"` or `"not permitted"`
+- `"s'oppose expressément"` + `"intelligence artificielle"` (French AFNOR pattern)
+- `"TDM opt-out"` or `"AI opt-out"`
+- `"no AI training"`, `"no AI processing"`, `"no machine learning"`
+- Any machine-readable robots.txt or HTML meta `<meta name="robots" content="noai">`
+
+---
+
+## 🔄 Classification Review
+
+### When to Re-Classify
+
+- When a document is updated or replaced with a new version
+- When the rightsholder updates their license terms
+- When regulatory guidance on DSM Art. 4 opt-out is updated
+- Annually for all documents in active use

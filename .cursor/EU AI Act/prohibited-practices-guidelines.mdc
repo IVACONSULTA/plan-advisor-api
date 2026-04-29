@@ -1,0 +1,478 @@
+---
+description: Streamlined EU AI Act development guidelines for designing compliant AI solutions. Essential compliance rules focused on practical implementation for AI agents and systems development.
+globs: agents/*.py, utils/*.py, tests/*.py, scripts/*.sh
+---
+
+# EU AI Act Development Guidelines for AI Agents
+
+## 🚫 Prohibited Practices - Never Implement in Any Agent
+
+### Biometric & Identity Restrictions
+
+- **NEVER**: Implement real-time biometric identification in public spaces
+- **NEVER**: Create biometric categorization based on:
+  - Race, ethnicity, political opinions, religion, sexual orientation
+  - Genetic data, health data, trade union membership
+- **NEVER**: Process special categories of personal data without explicit legal basis
+- **AGENT RULE**: No agent should collect, process, or share biometric data for identification
+
+### Social & Behavioral Restrictions
+
+- **NEVER**: Implement social scoring systems that evaluate people's behavior
+- **NEVER**: Create systems that lead to detrimental treatment based on social behavior
+- **NEVER**: Build agents that cross-reference personal data from different contexts for scoring
+- **AGENT RULE**: Agents must not make judgments about people's character or worthiness
+
+### Vulnerability & Manipulation Restrictions
+
+- **NEVER**: Target or exploit vulnerabilities based on:
+  - Age (children, elderly), disabilities, economic circumstances
+  - Educational level, language barriers, cultural background
+- **NEVER**: Implement subliminal manipulation or dark patterns
+- **NEVER**: Use deepfakes, voice manipulation for deceptive purposes
+- **AGENT RULE**: Agents must protect vulnerable users, not exploit them
+
+### Workplace & Employment Restrictions
+
+- **NEVER**: Monitor employee emotions through webcams or voice analysis
+- **NEVER**: Make employment decisions based on emotional profiling
+- **NEVER**: Implement predictive systems that lead to discriminatory practices
+- **AGENT RULE**: Workplace agents must respect worker dignity and privacy
+
+## 🤖 AI Agent Specific Compliance Framework
+
+### Agent Identity & Disclosure
+
+```python
+class CompliantAIAgent:
+    def __init__(self, agent_name: str, capabilities: dict):
+        self.agent_identity = {
+            'name': agent_name,
+            'is_ai_agent': True,
+            'capabilities': capabilities,
+            'limitations': self.define_limitations(),
+            'compliance_version': 'EU-AI-ACT-2024',
+            'human_oversight_required': self.assess_oversight_needs()
+        }
+
+    def interact(self, input_data, requesting_agent=None):
+        """Every interaction must include AI disclosure"""
+        # Validate requesting agent if inter-agent communication
+        if requesting_agent:
+            self.validate_agent_authorization(requesting_agent)
+
+        response = self.process_request(input_data)
+
+        return {
+            'response': response,
+            'agent_identity': self.agent_identity,
+            'explanation': self.explain_reasoning(),
+            'compliance_status': 'EU_AI_ACT_COMPLIANT'
+        }
+```
+
+### Multi-Agent Communication Safeguards
+
+```python
+class AgentCommunicationManager:
+    def __init__(self):
+        self.authorized_agents = set()
+        self.prohibited_data_types = {
+            'biometric_data',
+            'special_category_personal_data',
+            'social_scoring_data',
+            'emotional_profiling_data'
+        }
+
+    def agent_to_agent_communication(self, sender_agent, receiver_agent, data):
+        """Ensure inter-agent communication complies with EU AI Act"""
+
+        # Validate both agents are compliant
+        self.validate_agent_compliance(sender_agent)
+        self.validate_agent_compliance(receiver_agent)
+
+        # Screen data for prohibited content
+        if self.contains_prohibited_data(data):
+            raise ComplianceError("Prohibited data in inter-agent communication")
+
+        # Log communication for audit
+        self.log_agent_communication(sender_agent, receiver_agent, data)
+
+        return self.secure_transfer(data)
+```
+
+### Risk Classification for Agent Systems
+
+```python
+def classify_agent_risk_level(agent_capabilities: dict) -> str:
+    """Determine risk level based on agent capabilities"""
+
+    high_risk_indicators = {
+        'biometric_processing',
+        'employment_decisions',
+        'education_assessment',
+        'healthcare_decisions',
+        'law_enforcement_support',
+        'credit_assessment',
+        'social_benefits_evaluation'
+    }
+
+    if any(capability in high_risk_indicators for capability in agent_capabilities):
+        return 'HIGH_RISK'
+
+    if agent_capabilities.get('processes_personal_data'):
+        return 'MEDIUM_RISK'
+
+    return 'LOW_RISK'
+```
+
+## 🛡️ Agent-Specific Safeguards
+
+### Human Oversight Implementation
+
+```python
+class HumanOversightManager:
+    def __init__(self, risk_level: str):
+        self.risk_level = risk_level
+        self.oversight_requirements = self.define_oversight_requirements()
+
+    def requires_human_approval(self, action: dict) -> bool:
+        """Determine if action requires human approval"""
+
+        high_impact_actions = {
+            'affects_individual_rights',
+            'processes_sensitive_data',
+            'makes_significant_decisions',
+            'interacts_with_vulnerable_users',
+            'cross_references_personal_data'
+        }
+
+        return any(indicator in action for indicator in high_impact_actions)
+
+    def request_human_oversight(self, action: dict, agent_id: str):
+        """Request human review for agent action"""
+
+        oversight_request = {
+            'agent_id': agent_id,
+            'action': action,
+            'risk_assessment': self.assess_action_risk(action),
+            'compliance_concerns': self.identify_compliance_concerns(action),
+            'timestamp': datetime.utcnow(),
+            'status': 'PENDING_HUMAN_REVIEW'
+        }
+
+        return self.submit_for_human_review(oversight_request)
+```
+
+### Data Protection for Multi-Agent Systems
+
+```python
+class AgentDataProtectionManager:
+    def __init__(self):
+        self.data_minimization = True
+        self.purpose_limitation = True
+        self.consent_tracker = ConsentTracker()
+
+    def process_data_between_agents(self, data: dict, purpose: str,
+                                   sender_agent: str, receiver_agent: str):
+        """Ensure GDPR compliance in agent data sharing"""
+
+        # Validate purpose limitation
+        if not self.validate_purpose_compatibility(purpose, receiver_agent):
+            raise ComplianceError("Purpose not compatible with receiving agent")
+
+        # Check for special categories
+        if self.contains_special_categories(data):
+            if not self.consent_tracker.has_explicit_consent(data, purpose):
+                raise ComplianceError("Missing consent for special category data")
+
+        # Apply data minimization
+        minimized_data = self.minimize_data_for_purpose(data, purpose)
+
+        # Log transfer for audit
+        self.log_data_transfer(sender_agent, receiver_agent, minimized_data, purpose)
+
+        return minimized_data
+```
+
+## 📊 Agent Development Lifecycle Compliance
+
+### Pre-Development Phase
+
+```python
+class AgentComplianceAssessment:
+    def __init__(self):
+        self.assessment_framework = {
+            'prohibited_practices_check': self.check_prohibited_practices,
+            'risk_classification': self.classify_risk_level,
+            'fundamental_rights_assessment': self.assess_fundamental_rights_impact,
+            'data_protection_requirements': self.assess_data_protection_needs,
+            'human_oversight_planning': self.plan_human_oversight
+        }
+
+    def conduct_pre_development_assessment(self, agent_spec: dict):
+        """Comprehensive compliance assessment before development"""
+
+        assessment_results = {}
+
+        for check_name, check_function in self.assessment_framework.items():
+            try:
+                assessment_results[check_name] = check_function(agent_spec)
+            except ComplianceError as e:
+                assessment_results[check_name] = {'status': 'FAILED', 'error': str(e)}
+
+        return self.generate_compliance_report(assessment_results)
+```
+
+### Development Phase Safeguards
+
+```python
+class AgentDevelopmentSafeguards:
+    def __init__(self):
+        self.prohibited_patterns = self.load_prohibited_patterns()
+        self.bias_detection = BiasDetectionSystem()
+        self.transparency_engine = TransparencyEngine()
+
+    def validate_agent_code(self, agent_code: str) -> dict:
+        """Validate agent code for compliance violations"""
+
+        violations = []
+
+        # Check for prohibited patterns
+        for pattern in self.prohibited_patterns:
+            if pattern.matches(agent_code):
+                violations.append(f"Prohibited pattern detected: {pattern.name}")
+
+        # Check for bias risks
+        bias_risks = self.bias_detection.analyze_code(agent_code)
+        if bias_risks:
+            violations.extend(bias_risks)
+
+        # Verify transparency implementation
+        transparency_score = self.transparency_engine.assess_explainability(agent_code)
+        if transparency_score < 0.7:  # Threshold for compliance
+            violations.append("Insufficient transparency/explainability implementation")
+
+        return {
+            'compliant': len(violations) == 0,
+            'violations': violations,
+            'recommendations': self.generate_recommendations(violations)
+        }
+```
+
+## 🔄 Inter-Agent Compliance Protocols
+
+### Agent Authorization Framework
+
+```python
+class AgentAuthorizationManager:
+    def __init__(self):
+        self.agent_registry = {}
+        self.authorization_matrix = {}
+
+    def register_agent(self, agent_id: str, capabilities: dict,
+                      compliance_status: dict, risk_level: str):
+        """Register agent with compliance verification"""
+
+        if not self.verify_compliance_status(compliance_status):
+            raise ComplianceError(f"Agent {agent_id} failed compliance verification")
+
+        self.agent_registry[agent_id] = {
+            'capabilities': capabilities,
+            'compliance_status': compliance_status,
+            'risk_level': risk_level,
+            'registration_date': datetime.utcnow(),
+            'authorized_interactions': []
+        }
+
+    def authorize_agent_interaction(self, agent_a: str, agent_b: str,
+                                   interaction_type: str) -> bool:
+        """Authorize interaction between two agents"""
+
+        # Check if both agents are registered and compliant
+        if not all(agent in self.agent_registry for agent in [agent_a, agent_b]):
+            return False
+
+        # Assess interaction risk
+        risk_assessment = self.assess_interaction_risk(
+            self.agent_registry[agent_a],
+            self.agent_registry[agent_b],
+            interaction_type
+        )
+
+        # High-risk interactions require additional safeguards
+        if risk_assessment['level'] == 'HIGH':
+            return self.implement_high_risk_safeguards(agent_a, agent_b, interaction_type)
+
+        return True
+```
+
+### Cross-Agent Data Flow Monitoring
+
+```python
+class CrossAgentDataFlowMonitor:
+    def __init__(self):
+        self.data_flow_graph = DataFlowGraph()
+        self.compliance_checker = ComplianceChecker()
+
+    def monitor_data_flow(self, source_agent: str, target_agent: str,
+                         data_type: str, purpose: str):
+        """Monitor and validate data flow between agents"""
+
+        # Check for prohibited data flows
+        if self.is_prohibited_data_flow(data_type, source_agent, target_agent):
+            self.block_data_flow(source_agent, target_agent, "Prohibited data type")
+            return False
+
+        # Verify purpose limitation compliance
+        if not self.verify_purpose_limitation(purpose, target_agent):
+            self.block_data_flow(source_agent, target_agent, "Purpose limitation violation")
+            return False
+
+        # Log for audit trail
+        self.data_flow_graph.add_edge(source_agent, target_agent, {
+            'data_type': data_type,
+            'purpose': purpose,
+            'timestamp': datetime.utcnow(),
+            'compliance_status': 'APPROVED'
+        })
+
+        return True
+```
+
+## 🎯 Agent-Specific Compliance Checklist
+
+### Pre-Development Assessment
+
+- [ ] **Prohibited Practices Audit**: Verify no prohibited AI practices in agent design
+- [ ] **Risk Classification**: Determine agent risk level (LOW/MEDIUM/HIGH)
+- [ ] **Fundamental Rights Assessment**: Evaluate impact on fundamental rights
+- [ ] **Data Protection Impact Assessment**: Assess GDPR compliance requirements
+- [ ] **Human Oversight Planning**: Design appropriate human oversight mechanisms
+- [ ] **Inter-Agent Communication Planning**: Design compliant agent-to-agent protocols
+
+### Development Phase
+
+- [ ] **Compliance-by-Design**: Implement compliance requirements in agent architecture
+- [ ] **Bias Testing**: Test for discriminatory bias in agent decisions
+- [ ] **Transparency Implementation**: Build explainability into agent reasoning
+- [ ] **Data Minimization**: Implement data minimization in agent data processing
+- [ ] **Security Measures**: Implement cybersecurity safeguards
+- [ ] **Code Compliance Validation**: Validate agent code against prohibited patterns
+
+### Deployment Phase
+
+- [ ] **Agent Registration**: Register high-risk agents in EU database
+- [ ] **Authorization Framework**: Implement agent authorization system
+- [ ] **Monitoring Systems**: Deploy real-time compliance monitoring
+- [ ] **Human Oversight Activation**: Activate human oversight mechanisms
+- [ ] **Documentation Completion**: Complete all required technical documentation
+- [ ] **Incident Response Setup**: Establish incident detection and response procedures
+
+### Multi-Agent Environment
+
+- [ ] **Agent Identity Verification**: Implement agent identity and capability disclosure
+- [ ] **Cross-Agent Authorization**: Establish agent-to-agent authorization protocols
+- [ ] **Data Flow Monitoring**: Monitor inter-agent data transfers for compliance
+- [ ] **Collective Risk Assessment**: Assess risks from multiple agents operating together
+- [ ] **Compliance Propagation**: Ensure compliance requirements propagate across agent network
+- [ ] **Audit Trail Maintenance**: Maintain comprehensive audit trails for all agent interactions
+
+## 🚨 Emergency Compliance Protocols
+
+### Immediate Response Actions
+
+```python
+class EmergencyComplianceProtocol:
+    def __init__(self):
+        self.alert_system = ComplianceAlertSystem()
+        self.emergency_actions = EmergencyActionManager()
+
+    def handle_compliance_violation(self, violation_type: str,
+                                   agent_id: str, severity: str):
+        """Handle compliance violations immediately"""
+
+        if severity == 'CRITICAL':
+            # Immediately suspend agent
+            self.emergency_actions.suspend_agent(agent_id)
+
+            # Notify authorities if required
+            if violation_type in ['biometric_violation', 'discrimination', 'privacy_breach']:
+                self.alert_system.notify_authorities(violation_type, agent_id)
+
+        # Log incident
+        self.log_compliance_incident(violation_type, agent_id, severity)
+
+        # Initiate remediation
+        self.initiate_remediation_process(violation_type, agent_id)
+```
+
+### Agent Network Isolation
+
+```python
+def isolate_non_compliant_agent(agent_id: str, violation_details: dict):
+    """Isolate agent from network to prevent compliance contamination"""
+
+    # Stop all interactions
+    agent_communication_manager.block_all_communications(agent_id)
+
+    # Revoke authorizations
+    authorization_manager.revoke_all_authorizations(agent_id)
+
+    # Quarantine data
+    data_manager.quarantine_agent_data(agent_id)
+
+    # Notify other agents
+    broadcast_compliance_alert(agent_id, violation_details)
+```
+
+## 📈 Continuous Compliance Monitoring
+
+### Real-Time Monitoring Dashboard
+
+```python
+class AgentComplianceMonitor:
+    def __init__(self):
+        self.metrics_collector = ComplianceMetricsCollector()
+        self.anomaly_detector = ComplianceAnomalyDetector()
+        self.alert_thresholds = self.define_alert_thresholds()
+
+    def monitor_agent_compliance(self, agent_id: str):
+        """Continuous monitoring of agent compliance"""
+
+        current_metrics = self.metrics_collector.collect_metrics(agent_id)
+
+        # Check for anomalies
+        anomalies = self.anomaly_detector.detect_anomalies(current_metrics)
+
+        if anomalies:
+            self.handle_compliance_anomalies(agent_id, anomalies)
+
+        # Update compliance score
+        compliance_score = self.calculate_compliance_score(current_metrics)
+        self.update_agent_compliance_score(agent_id, compliance_score)
+
+        return compliance_score
+```
+
+## 🔍 Audit & Documentation Requirements
+
+### Comprehensive Audit Trail
+
+- **Agent Actions**: Log all agent decisions and actions
+- **Data Processing**: Track all data processing activities
+- **Inter-Agent Communications**: Monitor all agent-to-agent interactions
+- **Human Oversight Events**: Document all human oversight interventions
+- **Compliance Checks**: Record all compliance validations and results
+- **Incident Responses**: Maintain detailed incident response logs
+
+### Required Documentation
+
+- **Agent Architecture Documentation**: Complete technical specifications
+- **Compliance Assessment Reports**: Pre-deployment compliance assessments
+- **Risk Management Documentation**: Risk identification and mitigation strategies
+- **Data Flow Diagrams**: Visual representation of data flows between agents
+- **Human Oversight Procedures**: Detailed human oversight protocols
+- **Incident Response Plans**: Emergency response and remediation procedures
+
+This framework ensures that AI agents developed for any platform (CrewAI, LangChain, custom frameworks) maintain full EU AI Act compliance while enabling sophisticated multi-agent interactions and capabilities.

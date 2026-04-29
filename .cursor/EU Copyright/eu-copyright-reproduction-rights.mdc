@@ -1,0 +1,245 @@
+---
+description: EU copyright reproduction rights compliance guidelines based on InfoSoc Directive 2001/29/EC, Database Directive 96/9/EC, and Software Directive 2009/24/EC. Apply when implementing systems that reproduce, extract from, or communicate third-party content.
+globs: agents/*.py, guardrails/*.py, utils/*.py, tools/*.py, tests/*.py
+---
+
+# EU Copyright Reproduction and Extraction Rights
+
+## Legal Framework Overview
+
+| Directive | Key Articles | What It Protects | Relevance to AI Systems |
+|---|---|---|---|
+| InfoSoc Directive 2001/29/EC | Arts. 2, 3, 5 | Reproduction + communication to the public | Any copying of text/images into AI pipelines |
+| Database Directive 96/9/EC | Arts. 7, 8 | Sui generis database right | Extracting substantial parts of structured databases |
+| Software Directive 2009/24/EC | Arts. 4, 6 | Software source/object code | Decompilation, code analysis |
+| DSM Directive 2019/790 | Arts. 3, 4, 17 | TDM exception + opt-out | AI training and inference on third-party content |
+| Rental and Lending Directive 2006/115/EC | Art. 9 | Distribution right | Sharing copies of ingested documents |
+
+---
+
+## 📚 InfoSoc Directive 2001/29/EC
+
+### Article 2 — Reproduction Right
+
+**What is protected:** Any direct or indirect, temporary or permanent reproduction of a work by any means and in any form, in whole or in part.
+
+**In the context of AI systems this means:**
+
+- **PROHIBITED without license/exception**: Loading a PDF into a vector database (permanent reproduction)
+- **PROHIBITED without license/exception**: Storing extracted text from a copyrighted document
+- **PROHIBITED without license/exception**: Including copyrighted text verbatim in LLM prompts
+- **MAY BE PERMITTED**: Temporary RAM copies made as part of a lawful transmission (Art. 5(1) transient copies exception)
+- **MAY BE PERMITTED**: Extraction of factual, non-creative elements (facts are not protected — CJEU *Infopaq* C-5/08)
+
+### Rules for AI Development
+
+- **RULE**: Never store the full text of a copyrighted document in any persistent database
+- **RULE**: Temporary copies for the purpose of text extraction and analysis may qualify under Art. 5(1) — but only if transient and technically necessary
+- **RULE**: Extracted factual content (prices, thresholds, dates, transaction rules) is not protected — only creative expression is
+- **RULE**: Verbatim reproduction of even a small portion (11 words sufficient under *Infopaq*) constitutes reproduction
+
+### Article 3 — Communication to the Public Right
+
+**What is protected:** Any communication to the public of works, including making works available so they can be accessed from a place and time individually chosen.
+
+**In the context of AI systems:**
+
+- **PROHIBITED**: Displaying verbatim excerpts from copyrighted documents in API responses
+- **PROHIBITED**: Returning verbatim text in AI-generated summaries without license
+- **PERMITTED**: Communicating factual information derived from a document (e.g., "the annual fee is €1,200")
+- **PERMITTED**: Paraphrased summaries that convey factual content without reproducing expression
+
+### Article 5 — Exceptions and Limitations
+
+**Permitted uses relevant to AI systems:**
+
+| Exception | Article | Conditions |
+|---|---|---|
+| Transient/incidental copies | Art. 5(1) | Technically necessary, no independent economic significance |
+| Research and private study | Art. 5(3)(a) | Non-commercial, to the extent justified |
+| Quotation for criticism/review | Art. 5(3)(d) | Short excerpt, proper attribution, for commentary |
+| TDM for research | DSM Art. 3 | Research organisations only (see TDM guidelines) |
+| TDM for any purpose | DSM Art. 4 | No opt-out present (see TDM guidelines) |
+
+**None of these exceptions permit:**
+- Full document reproduction in a persistent store
+- Verbatim text output in commercial AI-generated content
+- Redistribution of copyrighted content to third parties
+
+---
+
+## 📚 Database Directive 96/9/EC — Sui Generis Right
+
+### Article 7 — Extraction and Re-utilisation
+
+**What is protected:** The **sui generis** database right protects databases where there has been substantial investment in obtaining, verifying, or presenting the contents.
+
+**In the context of AI systems:**
+
+- **PROHIBITED**: Extracting and re-utilising a **substantial part** of a protected database
+- **PROHIBITED**: Repeated extraction of insubstantial parts that cumulatively amount to a substantial part
+- A pricing database, tariff schedule, or transaction guide may qualify as a protected database
+
+**Definition of "substantial":**
+
+- Qualitative: importance/value of the extracted portion
+- Quantitative: volume of extracted content relative to the whole
+
+### Rules for AI Development
+
+- **RULE**: Do not extract and store entire pricing tables or transaction guides from third-party systems
+- **RULE**: Individual data points (single prices, single fees) are generally not protected under the sui generis right
+- **RULE**: Systematically scraping and indexing structured data from a third-party database requires a license
+- **RULE**: The sui generis right lasts 15 years and is renewable if substantial new investment occurs
+
+```python
+def assess_database_extraction_risk(extracted_rows: int, total_rows: int,
+                                    source_type: str) -> dict:
+    """
+    Assess sui generis database right exposure.
+    Based on Database Directive 96/9/EC, Art. 7.
+    """
+    extraction_ratio = extracted_rows / max(total_rows, 1)
+
+    if extraction_ratio > 0.50:
+        return {
+            'risk': 'HIGH',
+            'assessment': 'Substantial part extracted — likely infringement',
+            'legal_basis': 'Database Directive 96/9/EC, Art. 7',
+            'action': 'Obtain license or reduce scope of extraction'
+        }
+    elif extraction_ratio > 0.10 or source_type in ['pricing_database', 'tariff_schedule']:
+        return {
+            'risk': 'MEDIUM',
+            'assessment': 'Potentially significant extraction — verify investment threshold',
+            'legal_basis': 'Database Directive 96/9/EC, Art. 7',
+            'action': 'Document that extraction is for permitted purpose only'
+        }
+    else:
+        return {
+            'risk': 'LOW',
+            'assessment': 'Insubstantial extraction — likely permitted',
+            'legal_basis': 'Database Directive 96/9/EC, Art. 8',
+            'action': 'Log extraction for audit purposes'
+        }
+```
+
+### Article 8 — Rights of Lawful Users
+
+**Permitted for lawful database users:**
+
+- Access and normal use of a database whose contents are accessible to the public
+- Extraction for private purposes of a non-electronic database
+- Extraction for illustration/teaching (non-commercial, to the extent justified)
+- Extraction for public security or administrative/judicial purposes
+
+---
+
+## 📚 Software Directive 2009/24/EC
+
+### Article 4 — Restricted Acts
+
+**Relevant to AI systems that analyze or process software:**
+
+- **PROHIBITED**: Reproducing source or object code without license
+- **PROHIBITED**: Translating, adapting, or creating derivative works from software
+- **EXCEPTION**: A lawful user may make a backup copy (Art. 5(2))
+- **EXCEPTION**: Decompilation is strictly limited to achieving interoperability (Art. 6)
+
+### Rules for AI Systems
+
+- **RULE**: AI code analysis tools must not store verbatim source code from proprietary software
+- **RULE**: Code suggestions in AI tools must not reproduce substantial portions of copyrighted code (CJEU-consistent interpretation)
+- **RULE**: AI-generated code must not be substantially similar to copyrighted training data
+
+---
+
+## 🧩 Moral Rights (Berne Convention Art. 6bis)
+
+Moral rights are distinct from economic rights and **cannot be waived by contract** in most EU Member States:
+
+| Right | Description | AI Implication |
+|---|---|---|
+| Right of attribution | Author must be identified | AI outputs that present extracted content must attribute the source author/publisher |
+| Right of integrity | No distortion or mutilation of work | AI must not produce outputs that distort the meaning or context of extracted content |
+| Right of disclosure | Author controls first publication | AI may not publish unpublished works without consent |
+
+**Rules for AI Development:**
+
+- **RULE**: Always include source attribution in extracted rules, plans, and excerpts
+- **RULE**: Paraphrased content must not distort the original meaning of the source document
+- **RULE**: Never present AI-derived content as if it originates from the document author without proper attribution
+
+---
+
+## 🔍 Infopaq Doctrine — The 11-Word Rule
+
+The CJEU case **Infopaq International A/S v Danske Dagblades Forening** (C-5/08) established that:
+
+- As few as **11 consecutive words** can constitute a protected "part of a work"
+- Protection applies if the extracted portion reflects the **author's own intellectual creation**
+- Purely factual, functional, or formulaic text (prices, dates, numbers) does **not** qualify
+
+**Implementation consequence:**
+
+```python
+def validate_source_excerpt(excerpt: str, is_factual: bool) -> dict:
+    """
+    Validate that a source_excerpt complies with the Infopaq doctrine.
+    """
+    word_count = len(excerpt.split())
+
+    if is_factual:
+        # Factual content: prices, thresholds, transaction volumes
+        # Not protected under Infopaq — no copyright in facts
+        return {'compliant': True, 'reason': 'Factual content — not protected by copyright'}
+
+    if word_count > 10:
+        # Non-factual excerpt over 10 words may be protected
+        return {
+            'compliant': False,
+            'reason': (
+                f'Excerpt of {word_count} words may constitute a protected '
+                f'"part of a work" under Infopaq (C-5/08). Paraphrase required.'
+            ),
+            'action': 'Replace with paraphrased summary of ≤10 words or factual summary'
+        }
+
+    return {'compliant': True, 'reason': 'Short excerpt within Infopaq threshold'}
+```
+
+---
+
+## 📋 Reproduction Rights Compliance Checklist
+
+### Pre-Processing
+
+- [ ] **Copyright status assessment**: Classify document as CLEAR / RESTRICTED / BLOCKED
+- [ ] **Database right check**: Is the document a structured database with substantial investment?
+- [ ] **Software content check**: Does the document contain copyrighted source code?
+- [ ] **Moral rights notice**: Is the author/publisher identified for attribution?
+
+### During Processing
+
+- [ ] **Verbatim reproduction guard**: No verbatim text exceeding 10 words from RESTRICTED docs
+- [ ] **Factual extraction only**: For RESTRICTED docs, extract facts — not creative expression
+- [ ] **Attribution requirement**: Every extracted rule/plan includes `source_document_id`
+- [ ] **Integrity preservation**: Paraphrase must not distort the original meaning
+
+### Post-Processing
+
+- [ ] **Output audit**: Review AI output for unintended verbatim excerpts
+- [ ] **Source citation**: All source_excerpts include document reference
+- [ ] **Database extraction log**: Record number of rows/entries extracted from structured sources
+- [ ] **Compliance documentation**: Store copyright assessment per document in the audit log
+
+---
+
+## 🚨 Key Prohibited Practices
+
+- **NEVER** reproduce verbatim text from RESTRICTED documents in API responses, UI, or stored data
+- **NEVER** extract and store a substantial part of a protected database without a license
+- **NEVER** attribute AI-generated content to the source author as if they wrote it
+- **NEVER** distort extracted content in a way that misrepresents the original source
+- **NEVER** use the "temporary copy" exception (Art. 5(1)) to justify persistent storage
+- **NEVER** process documents whose source involves software code without checking the Software Directive

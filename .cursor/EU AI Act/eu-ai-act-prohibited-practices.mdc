@@ -1,0 +1,292 @@
+---
+description: EU AI Act compliance guidelines for building AI solutions that adhere to European Union regulations. Apply these rules when designing, developing, and deploying AI systems to ensure full compliance with the AI Act.
+globs: agents/*.py, utils/*.py, tests/*.py, scripts/*.sh
+---
+
+# EU AI Act Compliance Guidelines - Prohibited Practices
+
+## Prohibited AI Practices (Article 5)
+
+### Remote Biometric Identification Systems
+
+- **NEVER** deploy real-time remote biometric identification systems in publicly accessible spaces for law enforcement
+- **EXCEPTION**: Only for specific, substantial, and imminent threats to life or physical safety
+- **EXCEPTION**: Only for genuine and present terrorist attack threats
+- **EXCEPTION**: Only for localizing persons suspected of criminal offences listed in Annex II (4+ year custodial sentences)
+- **REQUIREMENT**: All exceptions must have prior judicial authorization (within 24 hours in urgent cases)
+- **REQUIREMENT**: Complete fundamental rights impact assessment (Article 27) before deployment
+- **REQUIREMENT**: Register system in EU database (Article 49) before use
+- **REQUIREMENT**: Notify market surveillance and data protection authorities
+- **REQUIREMENT**: Temporal, geographic, and personal limitations must be applied
+- **REQUIREMENT**: No adverse legal decisions based solely on biometric identification output
+
+#### Annex II Criminal Offences (Biometric ID Exceptions)
+
+Systems may only be used for locating suspects of these serious crimes:
+
+- **Terrorism and related offences**
+- **Trafficking in human beings**
+- **Sexual exploitation of children and child pornography**
+- **Illicit trafficking in narcotic drugs and psychotropic substances**
+- **Illicit trafficking in weapons, munitions and explosives**
+- **Corruption**
+- **Fraud affecting the European Union's financial interests**
+- **Counterfeiting of currency**
+- **Computer-related crime**
+- **Environmental crime**
+- **Participation in a criminal organization**
+- **Murder, grievous bodily injury**
+- **Illicit trade in human organs and tissue**
+- **Kidnapping, illegal restraint and hostage-taking**
+- **Organized or armed robbery**
+- **Illicit trafficking in cultural goods**
+- **Swindling**
+- **Racketeering and extortion**
+- **Counterfeiting and piracy of products**
+- **Forgery of administrative documents and trafficking therein**
+
+### Biometric Categorization (Enhanced with GDPR Article 9)
+
+- **PROHIBITED**: AI systems that categorize individuals based on biometric data and sensitive characteristics
+- **PROHIBITED**: Categorization based on special categories of personal data (GDPR Article 9):
+  - **Racial or ethnic origin**
+  - **Political opinions**
+  - **Religious or philosophical beliefs**
+  - **Trade union membership**
+  - **Sexual orientation**
+  - **Genetic data**
+  - **Biometric data for unique identification**
+  - **Health data**
+  - **Sex life or sexual orientation data**
+- **EXCEPTION**: Only for legitimate law enforcement purposes with proper safeguards
+- **REQUIREMENT**: Implement data protection by design and by default
+- **REQUIREMENT**: Obtain explicit consent for special categories processing (GDPR Article 9)
+- **REQUIREMENT**: Ensure data subject rights are fully respected
+
+### Social Scoring Systems
+
+- **PROHIBITED**: AI systems that evaluate or classify natural persons based on social behavior or personal characteristics
+- **PROHIBITED**: Systems that lead to detrimental or unfavorable treatment in social contexts unrelated to original data context
+- **PROHIBITED**: Systems that go beyond what is strictly necessary for the intended purpose
+- **PROHIBITED**: Systems that result in unjustified or disproportionate treatment
+- **PROHIBITED**: AI-enabled social scoring based on personal data from different contexts
+- **REQUIREMENT**: Implement fairness and non-discrimination principles
+- **REQUIREMENT**: Ensure proportionality in any assessment systems
+
+### Exploitation of Vulnerabilities (Expanded)
+
+- **PROHIBITED**: AI systems that exploit vulnerabilities of specific groups due to:
+  - **Age-related vulnerabilities** (children, elderly)
+  - **Physical or mental disabilities**
+  - **Social or economic circumstances**
+  - **Educational level or literacy**
+  - **Language barriers**
+  - **Cultural or religious background**
+- **PROHIBITED**: AI-enabled dark patterns designed to manipulate users into substantial financial commitments
+- **PROHIBITED**: Systems targeting vulnerable consumers with exploitative offers
+- **REQUIREMENT**: Implement inclusive design principles
+- **REQUIREMENT**: Conduct vulnerability impact assessments
+- **REQUIREMENT**: Provide additional safeguards for vulnerable groups
+
+### Subliminal and Manipulative Techniques
+
+- **PROHIBITED**: AI systems that use subliminal techniques beyond a person's consciousness
+- **PROHIBITED**: Systems that materially distort behavior causing physical or psychological harm
+- **PROHIBITED**: Manipulative AI practices including:
+  - **Voice and audio manipulation** for deceptive purposes
+  - **Deepfakes** used for manipulation or fraud
+  - **Personalized manipulation** exploiting psychological vulnerabilities
+- **REQUIREMENT**: Ensure transparency in AI decision-making processes
+- **REQUIREMENT**: Implement explainable AI principles
+- **REQUIREMENT**: Provide clear disclosure of AI-generated content
+
+### Employment and Workplace Prohibitions
+
+- **PROHIBITED**: AI systems monitoring employees' emotions through:
+  - **Webcam-based emotion recognition**
+  - **Voice analysis for emotional states**
+  - **Facial expression monitoring**
+  - **Physiological monitoring for emotional assessment**
+- **PROHIBITED**: AI systems making employment decisions based on emotional profiling
+- **REQUIREMENT**: Implement worker protection measures
+- **REQUIREMENT**: Ensure human oversight in employment decisions
+- **REQUIREMENT**: Provide transparency about workplace AI systems
+
+### Predictive Policing Restrictions
+
+- **PROHIBITED**: AI systems predicting individual criminal behavior based solely on:
+  - **Biometric data without verification**
+  - **Racial or ethnic profiling**
+  - **Social or economic status**
+  - **Location-based stereotyping**
+- **PROHIBITED**: Predictive systems leading to discriminatory law enforcement
+- **REQUIREMENT**: Implement bias detection and mitigation
+- **REQUIREMENT**: Ensure human review of predictive assessments
+- **REQUIREMENT**: Maintain accountability and transparency
+
+## Fundamental Rights Impact Assessment (Article 27)
+
+### Mandatory Assessment Requirements
+
+- **REQUIREMENT**: Conduct assessment before deploying high-risk AI systems
+- **REQUIREMENT**: Assess impact on fundamental rights including:
+  - **Right to human dignity**
+  - **Freedom of expression and information**
+  - **Right to privacy and data protection**
+  - **Right to non-discrimination**
+  - **Rights of the child**
+  - **Right to effective remedy**
+  - **Right to fair trial**
+- **REQUIREMENT**: Document assessment methodology and findings
+- **REQUIREMENT**: Implement mitigation measures for identified risks
+- **REQUIREMENT**: Regular review and update of assessments
+
+### Assessment Content
+
+- **REQUIREMENT**: Description of AI system and intended use
+- **REQUIREMENT**: Identification of affected fundamental rights
+- **REQUIREMENT**: Risk assessment and probability evaluation
+- **REQUIREMENT**: Mitigation measures and safeguards
+- **REQUIREMENT**: Monitoring and review procedures
+- **REQUIREMENT**: Stakeholder consultation where appropriate
+
+## Registration Requirements (Article 49)
+
+### EU Database Registration
+
+- **REQUIREMENT**: Register high-risk AI systems in publicly accessible EU database
+- **REQUIREMENT**: Registration before market placement or service deployment
+- **REQUIREMENT**: Provide required information including:
+  - **Provider details and contact information**
+  - **AI system description and intended use**
+  - **High-risk classification justification**
+  - **Conformity assessment information**
+  - **CE marking details**
+  - **Post-market monitoring information**
+
+### Registration Obligations
+
+- **REQUIREMENT**: Maintain up-to-date registration information
+- **REQUIREMENT**: Notify changes to system or intended use
+- **REQUIREMENT**: Provide additional information upon authority request
+- **REQUIREMENT**: Ensure database information accuracy
+- **REQUIREMENT**: Cooperate with market surveillance authorities
+
+## Special Categories Data Protection (GDPR Article 9)
+
+### Processing Restrictions
+
+- **PROHIBITED**: Processing special categories without legal basis:
+  - **Explicit consent of data subject**
+  - **Employment, social security, and social protection law**
+  - **Vital interests protection (life-threatening situations)**
+  - **Legitimate activities of foundations, associations, or non-profit bodies**
+  - **Data manifestly made public by data subject**
+  - **Legal claims establishment, exercise, or defense**
+  - **Substantial public interest**
+  - **Preventive or occupational medicine**
+  - **Public health interest**
+  - **Archiving, research, or statistical purposes**
+
+### Enhanced Protection Measures
+
+- **REQUIREMENT**: Implement additional technical and organizational measures
+- **REQUIREMENT**: Conduct data protection impact assessment
+- **REQUIREMENT**: Ensure data minimization principles
+- **REQUIREMENT**: Implement purpose limitation
+- **REQUIREMENT**: Ensure storage limitation
+- **REQUIREMENT**: Maintain processing records
+
+## Implementation Safeguards
+
+### Technical Safeguards
+
+- **REQUIREMENT**: Implement privacy-enhancing technologies
+- **REQUIREMENT**: Use encryption for sensitive data processing
+- **REQUIREMENT**: Implement access controls and authentication
+- **REQUIREMENT**: Ensure data integrity and security
+- **REQUIREMENT**: Implement audit logging and monitoring
+
+### Organizational Safeguards
+
+- **REQUIREMENT**: Establish clear governance structures
+- **REQUIREMENT**: Train staff on compliance requirements
+- **REQUIREMENT**: Implement regular compliance audits
+- **REQUIREMENT**: Establish incident response procedures
+- **REQUIREMENT**: Maintain comprehensive documentation
+
+### Legal Safeguards
+
+- **REQUIREMENT**: Ensure compliance with national laws
+- **REQUIREMENT**: Implement contractual safeguards with partners
+- **REQUIREMENT**: Establish clear accountability frameworks
+- **REQUIREMENT**: Provide effective remedies for individuals
+- **REQUIREMENT**: Ensure judicial oversight where required
+
+## Monitoring and Enforcement
+
+### Market Surveillance Cooperation
+
+- **REQUIREMENT**: Cooperate fully with competent authorities
+- **REQUIREMENT**: Provide requested documentation promptly
+- **REQUIREMENT**: Allow inspections and audits
+- **REQUIREMENT**: Implement corrective actions when required
+- **REQUIREMENT**: Report serious incidents and non-compliance
+
+### Continuous Monitoring
+
+- **REQUIREMENT**: Monitor system performance continuously
+- **REQUIREMENT**: Track compliance metrics and indicators
+- **REQUIREMENT**: Review and update risk assessments
+- **REQUIREMENT**: Monitor regulatory developments
+- **REQUIREMENT**: Assess new risks and vulnerabilities
+
+### Incident Reporting
+
+- **REQUIREMENT**: Establish incident detection procedures
+- **REQUIREMENT**: Report serious incidents to authorities
+- **REQUIREMENT**: Notify affected individuals when required
+- **REQUIREMENT**: Implement corrective and preventive actions
+- **REQUIREMENT**: Document incidents and responses
+
+## Compliance Checklist
+
+### Pre-Development Assessment
+
+- [ ] Identify applicable prohibited practices
+- [ ] Assess special categories data processing needs
+- [ ] Plan fundamental rights impact assessment
+- [ ] Determine registration requirements
+- [ ] Establish compliance framework
+
+### Development Phase
+
+- [ ] Implement prohibited practices safeguards
+- [ ] Design privacy and data protection measures
+- [ ] Build in transparency and explainability
+- [ ] Implement human oversight mechanisms
+- [ ] Create comprehensive documentation
+
+### Pre-Deployment
+
+- [ ] Complete fundamental rights impact assessment
+- [ ] Register system in EU database if required
+- [ ] Validate compliance with all requirements
+- [ ] Train operators and users
+- [ ] Establish monitoring procedures
+
+### Post-Deployment
+
+- [ ] Monitor system performance and compliance
+- [ ] Conduct regular compliance reviews
+- [ ] Update assessments as needed
+- [ ] Report incidents to authorities
+- [ ] Maintain compliance documentation
+
+### Ongoing Obligations
+
+- [ ] Stay updated on regulatory changes
+- [ ] Update systems and procedures as needed
+- [ ] Conduct periodic audits
+- [ ] Train staff on new requirements
+- [ ] Maintain stakeholder communication
