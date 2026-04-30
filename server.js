@@ -29,6 +29,13 @@ validateEnv();
 
 const app = express();
 
+// Platform liveness (Railway / load balancers): no DB, no middleware — must respond fast.
+const HOST = process.env.HOST || '0.0.0.0';
+
+app.get('/live', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // ─── Security middleware ─────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
@@ -63,25 +70,31 @@ app.use('/api/scenarios',  require('./routes/scenarios'));
 app.use('/api/scenarios',  require('./routes/ai-summary'));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
-// Railway treats non-2xx as failed deploys. Always return 200 once HTTP is up;
-// use `db` in the body for ops (connected vs unreachable).
-app.get('/health', async (req, res) => {
-  let db = 'unreachable';
+// Always HTTP 200 once the process is listening (matches Railway + our deploy docs).
+// Use JSON `db` / `status` to tell if Postgres is actually reachable.
+app.get('/health', async (_req, res) => {
   try {
     await dbQuery('SELECT 1');
-    db = 'connected';
-  } catch {
-    // still 200 — avoids health-check timeouts when DB is briefly slow after boot
+    res.status(200).json({
+      status: 'ok',
+      db: 'connected',
+      agents: {
+        doc_agent:     !!process.env.DOC_AGENT_URL,
+        summary_agent: !!process.env.SUMMARY_AGENT_URL,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (_err) {
+    res.status(200).json({
+      status: 'degraded',
+      db: 'unreachable',
+      agents: {
+        doc_agent:     !!process.env.DOC_AGENT_URL,
+        summary_agent: !!process.env.SUMMARY_AGENT_URL,
+      },
+      timestamp: new Date().toISOString(),
+    });
   }
-  res.status(200).json({
-    status: db === 'connected' ? 'ok' : 'degraded',
-    db,
-    agents: {
-      doc_agent:     !!process.env.DOC_AGENT_URL,
-      summary_agent: !!process.env.SUMMARY_AGENT_URL,
-    },
-    timestamp: new Date().toISOString(),
-  });
 });
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
@@ -98,15 +111,15 @@ app.use((err, req, res, _next) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+// Listen immediately (like ExpressApi). Do not await DB first — Railway health probes
+// need a bound port even if Postgres is still warming up or briefly unreachable.
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
 
-// Listen immediately so platform health checks do not time out while the DB warms up.
 app.listen(PORT, HOST, () => {
   console.log(
-    `✓ PA Plan API listening on http://${HOST}:${PORT} [${process.env.NODE_ENV || 'development'}]`
+    `✓ PA Plan API listening on http://${HOST}:${PORT} [${process.env.NODE_ENV || 'development'}]`,
   );
   testConnection().catch((err) => {
-    console.error(`⚠ PostgreSQL not reachable after boot: ${err.message}`);
+    console.error('⚠ PostgreSQL not reachable at startup — API is up; DB-dependent routes may fail:', err.message);
   });
 });

@@ -3,6 +3,8 @@
 > **App 2 — Backend Express API**  
 > Deploys to Railway as a persistent HTTP service connected to PostgreSQL, a Railway Volume, and two internal Python agents.
 
+**Dev deployment (public API base URL):** `https://planadvisor-dev.up.railway.app` — use this host in curl examples, Postman, and any client that calls the API. (`FRONTEND_URL` in Railway should still be your **web app** origin for CORS, e.g. Netlify — not this API URL.)
+
 ---
 
 ## Table of Contents
@@ -182,8 +184,8 @@ The API automatically creates subdirectories per profile:
 1. In the Railway canvas, click **+ New Service → GitHub Repo**
 2. Connect your GitHub account if not already connected
 3. Select the `PlanAdvisorAPI` repository
-4. Railway auto-detects `railway.json` and uses **NIXPACKS** to build
-5. The build runs `npm install` and starts `node server.js`
+4. Railway reads `railway.json` and builds with **Railpack** (same builder family as ExpressApi — Node 20+, `npm install`, then `npm start`)
+5. The service runs **`npm start`** → `node server.js` (`dotenv` is loaded from code at startup)
 
 ### Option B — Deploy via CLI
 
@@ -196,19 +198,35 @@ railway up
 
 ```json
 {
-  "build": { "builder": "NIXPACKS" },
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK"
+  },
   "deploy": {
-    "startCommand": "node server.js",
-    "healthcheckPath": "/health"
+    "healthcheckPath": "/live",
+    "healthcheckTimeout": 60,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
   }
 }
 ```
 
-Railway polls `GET /health` every 30 seconds. The endpoint returns:
+Railway’s **deploy health check** calls **`GET /live`** — instant **HTTP 200** with `{ "status": "ok" }` so the probe never waits on Postgres.
+
+For ops and dashboards, **`GET /health`** still returns **HTTP 200** once the API is listening; use the JSON body for database readiness:
 
 ```json
-{ "status": "ok", "timestamp": "2026-04-29T10:00:00.000Z" }
+{
+  "status": "ok",
+  "db": "connected",
+  "agents": { "doc_agent": true, "summary_agent": true },
+  "timestamp": "2026-04-29T10:00:00.000Z"
+}
 ```
+
+If Postgres is unreachable, you may see `"status": "degraded"` and `"db": "unreachable"` (**still HTTP 200** — the probe used at deploy time is **`/live`**, not **`/health`**).
+
+The root **`Dockerfile`** remains in the repo if you prefer a container build; switch `railway.json` `"build"."builder"` to **`DOCKERFILE`** and set **`dockerfilePath`** to **`Dockerfile`** when you want that path instead of Railpack.
 
 ---
 
@@ -304,7 +322,7 @@ railway run psql $DATABASE_URL -c "
 **Or use the API endpoint (once deployed):**
 
 ```bash
-curl -X POST https://your-api.up.railway.app/api/admin/users \
+curl -X POST https://planadvisor-dev.up.railway.app/api/admin/users \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -323,8 +341,11 @@ curl -X POST https://your-api.up.railway.app/api/admin/users \
 ### Health check
 
 ```bash
-curl https://your-api.up.railway.app/health
-# Expected: {"status":"ok","timestamp":"..."}
+curl https://planadvisor-dev.up.railway.app/live
+# Expected: HTTP 200 immediately — `{ "status": "ok" }` (what Railway probes during deploy)
+
+curl https://planadvisor-dev.up.railway.app/health
+# Expected: HTTP 200 — body includes "status" ("ok" or "degraded") and "db" ("connected" or "unreachable")
 ```
 
 ### Test authentication
@@ -339,7 +360,7 @@ TOKEN=$(curl -s -X POST \
   | jq -r '.access_token')
 
 # 2. Call a protected endpoint
-curl https://your-api.up.railway.app/api/countries \
+curl https://planadvisor-dev.up.railway.app/api/countries \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -347,13 +368,13 @@ curl https://your-api.up.railway.app/api/countries \
 
 ```bash
 # 1. Create a country
-curl -X POST https://your-api.up.railway.app/api/admin/countries \
+curl -X POST https://planadvisor-dev.up.railway.app/api/admin/countries \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"code":"FR","name":"France"}'
 
 # 2. Check available countries for calculator
-curl https://your-api.up.railway.app/api/calculator/available-countries \
+curl https://planadvisor-dev.up.railway.app/api/calculator/available-countries \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -383,7 +404,7 @@ The Express API communicates with the two Python agents (App 3 and App 4) over R
 
 ```
 Internet
-  │ HTTPS
+  │ HTTPS (e.g. planadvisor-dev.up.railway.app)
   ▼
 Express API (Railway)
   ├──[railway.internal]──► PostgreSQL (Railway)
@@ -407,7 +428,8 @@ Express API (Railway)
 - [ ] Volume is mounted at `/data/documents` and size is adequate
 - [ ] All 13 tables created — verified with `\dt` in psql
 - [ ] At least one `admin` user exists in both Supabase Auth and `users_profile`
-- [ ] Health check returns `200 OK` at `/health`
+- [ ] **`GET /live`** returns `200 OK` (Railway deploy probe)
+- [ ] **`GET /health`** returns `200 OK` with `db: connected` once Postgres is healthy
 
 ### Security
 

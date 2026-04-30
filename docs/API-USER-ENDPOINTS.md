@@ -5,7 +5,7 @@ This document describes the **authenticated REST endpoints** that power **custom
 Architectural background, env vars, and the full endpoint matrix are in [PA-PLAN-ADVISOR-GUIDE.md](./PA-PLAN-ADVISOR-GUIDE.md).
 
 **Base URL (local):** `http://localhost:3000`  
-**API prefix:** all routes below assume `/api` unless noted. Health checks use `/health` (no `/api` prefix).
+**API prefix:** all routes below assume `/api` unless noted. Operational checks use **`GET /live`** (liveness only) and **`GET /health`** (liveness + DB ping in JSON; always HTTP **200**) — neither uses the `/api` prefix.
 
 ---
 
@@ -113,7 +113,7 @@ Individual requests will inherit this unless overridden.
 
 ### 3. Suggested request order
 
-1. **`GET {{base_url}}/health`** — No auth. Confirms API + DB (`db: connected`).  
+1. **`GET {{base_url}}/health`** — No auth. Always **HTTP 200**; JSON shows `status: ok` when `db: connected`, or `status: degraded` when `db: unreachable`. (**`GET {{base_url}}/live`** is a trivial liveness probe used by Railway — no DB check.)
 2. **Obtain JWT** — Use the Frontend login or Supabase dashboard / Auth API; copy the **access token** into `access_token`.  
 3. **`GET {{base_url}}/api/me`** — Confirms `users_profile` exists and role is correct.  
 4. **`GET {{base_url}}/api/user/dashboard`** — Verifies active profiles and recent scenarios.  
@@ -132,7 +132,7 @@ Individual requests will inherit this unless overridden.
 | `404` | Unknown `profile_id` or `scenario_id`. |
 | `422` | Calculator prerequisites missing (no approved rules/plans). |
 | `429` | AI quota exceeded (`checkAIQuota`) or AI rate limiter. |
-| `503` | Summary agent not configured, or `/health` when DB is down. |
+| `503` | Summary agent not configured (`/api/scenarios/.../generate-summary`). **`/health` does not use 503** — use the JSON body to see DB status. |
 
 ### 5. Local database seed
 
