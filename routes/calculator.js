@@ -12,7 +12,11 @@ router.get('/available-countries', requireAuth, async (req, res) => {
     const { rows } = await db.query(
       `SELECT cp.id AS profile_id, cp.version, cp.currency, cp.active_from,
               co.id AS country_id, co.code AS country_code, co.name AS country_name,
-              pr.id AS provider_id, pr.name AS provider_name, pr.type AS provider_type
+              pr.id AS provider_id, pr.name AS provider_name, pr.type AS provider_type,
+              (SELECT COUNT(*)::int FROM transaction_rules tr
+                 WHERE tr.profile_id = cp.id AND tr.status = 'approved') AS rules_count,
+              (SELECT COUNT(*)::int FROM plans pl
+                 WHERE pl.profile_id = cp.id AND pl.status = 'approved') AS plans_count
        FROM calculation_profiles cp
        JOIN countries co ON co.id = cp.country_id
        JOIN providers pr ON pr.id = cp.provider_id
@@ -208,13 +212,20 @@ router.post('/calculate', requireAuth, async (req, res) => {
       recommended_plan:    recommended,
     };
 
-    // 6. Persist as a scenario
+    // 6. Persist as a scenario (company_id from profile for client/team filtering)
+    const { rows: upRows } = await db.query(
+      `SELECT company_id FROM users_profile WHERE id = $1`,
+      [req.user.id]
+    );
+    const companyId = upRows[0]?.company_id ?? null;
+
     const { rows: scenario } = await db.query(
       `INSERT INTO scenarios
-         (client_name, profile_id, input_json, result_json, recommended_plan_id, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (company_id, client_name, profile_id, input_json, result_json, recommended_plan_id, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, created_at`,
       [
+        companyId,
         client_name || null,
         profile_id,
         JSON.stringify(inputs),

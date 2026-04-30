@@ -51,7 +51,9 @@ app.use(globalLimiter);
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/countries',  require('./routes/countries'));
 app.use('/api/providers',  require('./routes/providers'));
+app.use('/api/admin',      require('./routes/admin-catalog'));
 app.use('/api/admin',      require('./routes/users'));
+app.use('/api',            require('./routes/user-session'));
 app.use('/api/admin',      require('./routes/profiles'));
 app.use('/api/admin',      require('./routes/documents'));
 app.use('/api/admin',      require('./routes/rules'));

@@ -6,7 +6,7 @@ const { requireAuth } = require('../lib/supabase');
 /**
  * GET /api/scenarios
  * - Admin: all scenarios
- * - Internal: all scenarios created by internal users
+ * - Internal: scenarios whose creator role is admin or internal
  * - Client: only own scenarios (filtered by company)
  */
 router.get('/', requireAuth, async (req, res) => {
@@ -20,7 +20,11 @@ router.get('/', requireAuth, async (req, res) => {
                 up.email AS created_by_email,
                 co.name  AS country_name,
                 pr.name  AS provider_name,
-                cp.version
+                cp.version,
+                (s.result_json->>'total_pa_transactions')::numeric AS total_pa_transactions,
+                s.result_json->'recommended_plan'->>'plan_name' AS recommended_plan_name,
+                (s.result_json->'recommended_plan'->>'total_annual_cost')::numeric
+                  AS recommended_total_annual_cost
          FROM scenarios s
          JOIN users_profile up       ON up.id = s.created_by
          JOIN calculation_profiles cp ON cp.id = s.profile_id
@@ -36,7 +40,11 @@ router.get('/', requireAuth, async (req, res) => {
                 up.email AS created_by_email,
                 co.name  AS country_name,
                 pr.name  AS provider_name,
-                cp.version
+                cp.version,
+                (s.result_json->>'total_pa_transactions')::numeric AS total_pa_transactions,
+                s.result_json->'recommended_plan'->>'plan_name' AS recommended_plan_name,
+                (s.result_json->'recommended_plan'->>'total_annual_cost')::numeric
+                  AS recommended_total_annual_cost
          FROM scenarios s
          JOIN users_profile up       ON up.id = s.created_by
          JOIN calculation_profiles cp ON cp.id = s.profile_id
@@ -59,7 +67,11 @@ router.get('/', requireAuth, async (req, res) => {
                 s.ai_summary IS NOT NULL AS has_summary,
                 co.name AS country_name,
                 pr.name AS provider_name,
-                cp.version
+                cp.version,
+                (s.result_json->>'total_pa_transactions')::numeric AS total_pa_transactions,
+                s.result_json->'recommended_plan'->>'plan_name' AS recommended_plan_name,
+                (s.result_json->'recommended_plan'->>'total_annual_cost')::numeric
+                  AS recommended_total_annual_cost
          FROM scenarios s
          JOIN calculation_profiles cp ON cp.id = s.profile_id
          JOIN countries co           ON co.id = cp.country_id
@@ -81,7 +93,7 @@ router.get('/', requireAuth, async (req, res) => {
 
 /**
  * GET /api/scenarios/:id
- * Full scenario detail — owner, admin, or internal users only.
+ * Full scenario detail — admin (all); internal (creator must be admin/internal); client (owner or same company).
  */
 router.get('/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
@@ -92,7 +104,8 @@ router.get('/:id', requireAuth, async (req, res) => {
               cp.version, cp.currency,
               co.name AS country_name,
               pr.name AS provider_name,
-              up.email AS created_by_email
+              up.email AS created_by_email,
+              up.role AS created_by_role
        FROM scenarios s
        JOIN calculation_profiles cp ON cp.id = s.profile_id
        JOIN countries co            ON co.id = cp.country_id
@@ -105,6 +118,13 @@ router.get('/:id', requireAuth, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Scenario not found.' });
 
     const scenario = rows[0];
+
+    // Internal users only see scenarios created by admin/internal (not external clients)
+    if (req.userRole === 'internal') {
+      if (!['admin', 'internal'].includes(scenario.created_by_role)) {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    }
 
     // Access control
     if (req.userRole === 'client') {
@@ -120,7 +140,8 @@ router.get('/:id', requireAuth, async (req, res) => {
       }
     }
 
-    res.json(scenario);
+    const { created_by_role: _omit, ...rest } = scenario;
+    res.json(rest);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch scenario.' });

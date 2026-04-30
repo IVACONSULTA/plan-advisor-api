@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../lib/db');
-const { requireAuth, requireAdmin } = require('../lib/supabase');
+const { requireAuth } = require('../lib/supabase');
 
 /**
  * GET /api/countries
@@ -33,34 +33,6 @@ router.get('/', requireAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch countries.' });
-  }
-});
-
-/**
- * POST /api/admin/countries  (mounted under /api/admin in server.js)
- * Admin only — create a new country.
- */
-router.post('/countries', requireAuth, requireAdmin, async (req, res) => {
-  const { code, name } = req.body;
-
-  if (!code || !name) {
-    return res.status(400).json({ error: 'code and name are required.' });
-  }
-
-  try {
-    const { rows } = await db.query(
-      `INSERT INTO countries (code, name, created_by)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [code.toUpperCase(), name, req.user.id]
-    );
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    if (err.code === '23505') {
-      return res.status(409).json({ error: 'Country code already exists.' });
-    }
-    console.error(err);
-    res.status(500).json({ error: 'Failed to create country.' });
   }
 });
 

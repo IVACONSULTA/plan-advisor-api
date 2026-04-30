@@ -23,6 +23,20 @@ router.post(
   checkAIQuota,
   aiLimiter,
   async (req, res) => {
+    if (!process.env.SUMMARY_AGENT_URL) {
+      return res.status(503).json({
+        error: 'summary_agent_unavailable',
+        message:
+          'SUMMARY_AGENT_URL is not set. Configure the summary agent URL in Railway (see docs/PA-PLAN-ADVISOR-GUIDE.md).',
+      });
+    }
+    if (!process.env.AGENT_API_KEY) {
+      return res.status(503).json({
+        error: 'summary_agent_misconfigured',
+        message: 'AGENT_API_KEY is not set; cannot call the summary agent.',
+      });
+    }
+
     const { id } = req.params;
 
     try {
@@ -32,11 +46,13 @@ router.post(
                 cp.version AS profile_version,
                 cp.currency,
                 co.name AS country_name,
-                pr.name AS provider_name
+                pr.name AS provider_name,
+                creator.role AS created_by_role
          FROM scenarios s
          JOIN calculation_profiles cp ON cp.id = s.profile_id
          JOIN countries co            ON co.id = cp.country_id
          JOIN providers pr            ON pr.id = cp.provider_id
+         JOIN users_profile creator  ON creator.id = s.created_by
          WHERE s.id = $1`,
         [id]
       );
@@ -44,6 +60,12 @@ router.post(
       if (!rows.length) return res.status(404).json({ error: 'Scenario not found.' });
 
       const scenario = rows[0];
+
+      if (req.userRole === 'internal') {
+        if (!['admin', 'internal'].includes(scenario.created_by_role)) {
+          return res.status(403).json({ error: 'Access denied.' });
+        }
+      }
 
       // Access control — client can only summarise own/company scenarios
       if (req.userRole === 'client') {
