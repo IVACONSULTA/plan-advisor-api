@@ -5,6 +5,10 @@ const cors      = require('cors');
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { testConnection, query: dbQuery } = require('./lib/db');
+const {
+  validateApiKeyConfiguredAtStartup,
+  requireApiKey,
+} = require('./lib/api-key');
 
 // ─── Env validation ──────────────────────────────────────────────────────────
 // Fail fast for truly required variables; warn for optional ones.
@@ -26,8 +30,12 @@ function validateEnv() {
 }
 
 validateEnv();
+validateApiKeyConfiguredAtStartup();
 
 const app = express();
+
+// One reverse proxy (Railway, etc.) sets X-Forwarded-For — required for express-rate-limit + correct req.ip.
+app.set('trust proxy', Number(process.env.TRUST_PROXY_COUNT) || 1);
 
 // Platform liveness (Railway / load balancers): no DB, no middleware — must respond fast.
 const HOST = process.env.HOST || '0.0.0.0';
@@ -54,6 +62,9 @@ const globalLimiter = rateLimit({
   message: { error: 'Too many requests. Please try again later.' },
 });
 app.use(globalLimiter);
+
+// Shared secret for clients / Postman / BFF — skipped for GET /health and GET /live only.
+app.use(requireApiKey);
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/countries',  require('./routes/countries'));

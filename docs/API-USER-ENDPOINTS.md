@@ -1,150 +1,712 @@
-# PA Plan Advisor API — User interaction endpoints
+# PA Plan Advisor API — Endpoint reference & Postman
 
-This document describes the **authenticated REST endpoints** that power **customer (`client`)** and **internal (`internal`)** flows: session/bootstrap, dashboard, countries/providers catalog, calculator, scenarios, and AI summaries. Admin-only setup (documents, analyses, profiles, rule approval) lives under `/api/admin/*` and is intentionally out of scope here.
+This document lists **all implemented HTTP endpoints** in this repo, with **Postman-oriented examples**.
 
-Architectural background, env vars, and the full endpoint matrix are in [PA-PLAN-ADVISOR-GUIDE.md](./PA-PLAN-ADVISOR-GUIDE.md).
+**Ready-to-import collection:** [`postman/PA-Plan-Advisor-API.postman_collection.json`](../postman/PA-Plan-Advisor-API.postman_collection.json) — import via Postman **File → Import**. It includes **`X-API-Key`** + **Bearer** on all `/api/*` requests; **Platform** (`/live`, `/health`) has no auth headers.
 
-**Base URL (local):** `http://localhost:3000`  
-**API prefix:** all routes below assume `/api` unless noted. Operational checks use **`GET /live`** (liveness only) and **`GET /health`** (liveness + DB ping in JSON; always HTTP **200**) — neither uses the `/api` prefix.
+Architectural background and the full product matrix: [PA-PLAN-ADVISOR-GUIDE.md](./PA-PLAN-ADVISOR-GUIDE.md).  
+Railway deploy steps: [RAILWAY-DEPLOYMENT-GUIDE.md](./RAILWAY-DEPLOYMENT-GUIDE.md).
+
+## Base URLs
+
+| Environment | `base_url` (no trailing slash) |
+|-------------|--------------------------------|
+| **Railway (dev)** | `https://planadvisor-dev.up.railway.app` |
+| **Local** | `http://localhost:3000` |
+
+In Postman, set:
+
+| Variable | Purpose |
+|----------|---------|
+| `base_url` | `https://planadvisor-dev.up.railway.app` or `http://localhost:3000` |
+| `pa_plan_api_key` | Same value as server env **`PA_PLAN_API_KEY`** (required on Railway in production for all routes except probes) |
+| `access_token` | Supabase JWT after login |
+| `profile_id`, `scenario_id`, … | From prior responses |
+
+**Default headers for every request under `/api`:** add **`X-API-Key: {{pa_plan_api_key}}`** at the collection level when the gate is enabled; keep **Bearer** auth as documented per request. Omit **`X-API-Key`** only for **`GET /live`** and **`GET /health`**, or when running locally with **`PA_PLAN_API_KEY`** unset.
+
+**Path prefixes**
+
+- **No `/api` prefix:** `GET /live`, `GET /health` — **no API key required** (probes stay simple).
+- **API key gate:** when **`PA_PLAN_API_KEY`** is set, **all other paths** (including every `/api/*` route) must send **`X-API-Key`**; **`OPTIONS`** preflight is exempt so CORS works.
+- **Authenticated catalog & flows:** `/api/...` — **API key** (if enabled) **+** Supabase **Bearer** token, except the two probe paths above.
+- **Admin:** `/api/admin/...` — same headers; user must also have **`admin`** in `users_profile`.
 
 ---
 
 ## Authentication
 
-Every endpoint below requires a valid **Supabase access token** (JWT) obtained from the Frontend login (`signInWithPassword`) or Supabase tooling.
+### API key (all routes except platform probes)
 
-Send the header on every request:
+Railway (and `.env`): set **`PA_PLAN_API_KEY`**. When this variable is **non-empty**, every request must include:
 
 ```http
-Authorization: Bearer <access_token>
+X-API-Key: <same value as PA_PLAN_API_KEY>
 ```
 
-The API validates the JWT with Supabase Auth, then loads **`role`** and **`active`** from PostgreSQL (`users_profile`). Deactivated users receive `403`. Users missing a `users_profile` row receive `403` with `User profile not found`.
+**Exceptions:** `GET /live` and `GET /health` only — no API key.
+
+In **`NODE_ENV=production`**, **`PA_PLAN_API_KEY` is required** at startup (the process exits if unset). Local dev may omit it; the gate is then disabled and a warning is logged.
+
+Wrong or missing key → **`401`** with `{ "error": "Invalid or missing API key.", "hint": "..." }`.  
+This runs **before** JWT validation: a missing **`X-API-Key`** returns that response even if the Bearer token would be valid.
+
+### Supabase JWT (most `/api/*` routes)
+
+Most routes also use a **Supabase access token**. Send **both** headers when the API key gate is enabled:
+
+```http
+X-API-Key: {{pa_plan_api_key}}
+Authorization: Bearer {{access_token}}
+```
+
+(Postman normalizes `X-API-Key`; Express accepts `x-api-key`.)
+
+The API validates the JWT with Supabase, then loads **`role`** and **`active`** from PostgreSQL (`users_profile`).  
+Missing profile → **`403`** (`User profile not found` pattern). Inactive user → **`403`**.
+
+**Obtain `access_token` (example — replace with your Supabase project):**
+
+```http
+POST https://<project-ref>.supabase.co/auth/v1/token?grant_type=password
+apikey: <SUPABASE_ANON_KEY>
+Content-Type: application/json
+
+{
+  "email": "you@example.com",
+  "password": "your-password"
+}
+```
+
+Use `access_token` from the JSON response in Postman variable `{{access_token}}`.
+
+**Postman tip:** Add collection variables `pa_plan_api_key` and `access_token`. Use **Authorization** → Bearer `{{access_token}}`, and add a collection header `X-API-Key` = `{{pa_plan_api_key}}` (or per-request), whenever `PA_PLAN_API_KEY` is set on the server.
 
 ---
 
-## Endpoints overview
+## Quick index
 
-| Method | Path | Roles | Purpose |
-|--------|------|--------|---------|
-| `GET` | `/api/me` | admin, internal, client | Bootstrap: profile, company, UI flags (`client_summary_enabled`). |
-| `GET` | `/api/user/dashboard` | admin, internal, client | Home widgets: active profiles (with rule/plan counts), recent scenarios, aggregates. |
-| `GET` | `/api/countries` | admin, internal, client | Country list (admin: all countries; others: countries with ≥1 **active** profile). |
-| `GET` | `/api/providers` | admin, internal, client | Provider/PA catalog. |
-| `GET` | `/api/calculator/available-countries` | admin, internal, client | Active profiles as country+provider rows (includes `rules_count`, `plans_count`). |
-| `GET` | `/api/calculator/profile/:id` | admin, internal, client | Dynamic calculator inputs for a profile (`client` only if profile is **active**). |
-| `POST` | `/api/calculator/calculate` | admin, internal, client | Deterministic calculation; creates a **scenario** (`client` only on **active** profiles). |
-| `GET` | `/api/scenarios` | admin, internal, client | Scenario list (filtered by role; see below). |
-| `GET` | `/api/scenarios/:id` | admin, internal, client | Full scenario + stored result JSON. |
-| `POST` | `/api/scenarios/:id/generate-summary` | admin, internal, client* | Calls summary agent App 4; stores `ai_summary`. |
+**Credentials column:** **`—`** = no headers. **`X-API-Key`** = required **only when** `PA_PLAN_API_KEY` is set on the server (always on Railway prod). **`Bearer`** = Supabase access token. Real requests use **both** where both cells apply.
 
-\* **Client:** only own/company scenarios; **internal:** only scenarios whose creator is `admin` or `internal`; **admin:** all. Quota middleware applies (`lib/quota.js`).  
-Requires `SUMMARY_AGENT_URL` and `AGENT_API_KEY` (`503` if missing).
+| Method | Path | Credentials | Roles |
+|--------|------|-------------|--------|
+| `GET` | `/live` | — | — |
+| `GET` | `/health` | — | — |
+| `GET` | `/api/me` | X-API-Key + Bearer | admin, internal, client |
+| `GET` | `/api/user/dashboard` | X-API-Key + Bearer | admin, internal, client |
+| `GET` | `/api/countries` | X-API-Key + Bearer | admin, internal, client |
+| `GET` | `/api/providers` | X-API-Key + Bearer | admin, internal, client |
+| `GET` | `/api/calculator/available-countries` | X-API-Key + Bearer | admin, internal, client |
+| `GET` | `/api/calculator/profile/:id` | X-API-Key + Bearer | admin, internal, client |
+| `POST` | `/api/calculator/calculate` | X-API-Key + Bearer | admin, internal, client |
+| `GET` | `/api/scenarios` | X-API-Key + Bearer | admin, internal, client |
+| `GET` | `/api/scenarios/:id` | X-API-Key + Bearer | admin, internal, client |
+| `POST` | `/api/scenarios/:id/generate-summary` | X-API-Key + Bearer | admin, internal, client* |
+| `POST` | `/api/admin/countries` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/providers` | X-API-Key + Bearer | **admin** |
+| `GET` | `/api/admin/users` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/users` | X-API-Key + Bearer | **admin** |
+| `PATCH` | `/api/admin/users/:id` | X-API-Key + Bearer | **admin** |
+| `GET` | `/api/admin/profiles` | X-API-Key + Bearer | **admin** |
+| `GET` | `/api/admin/profiles/:id` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/profiles` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/profiles/:id/activate` | X-API-Key + Bearer | **admin** |
+| `GET` | `/api/admin/documents` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/documents/upload` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/documents/analyze` | X-API-Key + Bearer | **admin** |
+| `PATCH` | `/api/admin/rules/:id` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/rules/:id/approve` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/rules/:id/reject` | X-API-Key + Bearer | **admin** |
+| `PATCH` | `/api/admin/plans/:id` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/plans/:id/approve` | X-API-Key + Bearer | **admin** |
+| `POST` | `/api/admin/plans/:id/reject` | X-API-Key + Bearer | **admin** |
+
+\* See [Scenario access](#scenario-access-rules).
 
 ---
 
-## Role semantics (lists and access)
+## Platform & health
 
-### `GET /api/scenarios`
+### `GET /live`
 
-- **admin:** All scenarios (up to 200).
-- **internal:** Scenarios whose **creator** is `admin` or `internal` (up to 200).
-- **client:** Rows where `created_by` is the current user **or** `company_id` matches the user’s `users_profile.company_id` (when set).
+**Auth:** none — **`X-API-Key` not required** (Railway / probes).  
+**Purpose:** Fast liveness (no database).
 
-### `GET /api/scenarios/:id` / `POST .../generate-summary`
+**Postman**
 
-- **client:** Same ownership/company rules as list.
-- **internal:** Forbidden if scenario was created by a **client** user.
-- **admin:** Full access.
+- Method: `GET`
+- URL: `{{base_url}}/live`
+- Do **not** set collection auth override here; no **`X-API-Key`** needed.
 
-### `POST /api/calculator/calculate`
+**Example response**
 
-- **`company_id`** on the inserted scenario is copied from **`users_profile.company_id`** when present (helps company-wide visibility for clients).
+```json
+{ "status": "ok" }
+```
 
 ---
 
-## Request/response notes
+### `GET /health`
 
-### `POST /api/calculator/calculate`
+**Auth:** none — **`X-API-Key` not required.**  
+**Purpose:** Process is up; JSON reports DB reachability. **Always HTTP 200.**
 
-**Body (JSON):**
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/health`
+The API key middleware **does not run** for this path — probes stay unauthenticated.
+
+**Example (DB OK)**
 
 ```json
 {
-  "profile_id": "uuid-of-calculation_profiles",
-  "client_name": "Acme Corp (optional)",
+  "status": "ok",
+  "db": "connected",
+  "agents": { "doc_agent": true, "summary_agent": true },
+  "timestamp": "2026-04-30T12:00:00.000Z"
+}
+```
+
+If Postgres is unreachable, expect `"status": "degraded"` and `"db": "unreachable"` (still **200**).
+
+---
+
+## Shared Postman defaults (all `/api/*` sections below)
+
+For **every** endpoint from **`GET /api/me`** onward, unless you disabled the gate locally:
+
+1. **Headers:** `X-API-Key` = `{{pa_plan_api_key}}` (matches Railway **`PA_PLAN_API_KEY`**).
+2. **Authorization:** Type **Bearer Token**, value `{{access_token}}` — or equivalent **Authorization** header.
+
+`multipart/form-data` requests (**document upload**) still need **`X-API-Key`** in the **Headers** tab (not inside the form body).
+
+The per-endpoint **Postman** blocks below list **Bearer** only — **add `X-API-Key` as above** whenever the server has the env var set.
+
+---
+
+## Session & dashboard
+
+### `GET /api/me`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/me`
+- Authorization: Bearer `{{access_token}}`
+
+Returns `users_profile` + company fields and `client_summary_enabled` (placeholder flag).
+
+---
+
+### `GET /api/user/dashboard`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/user/dashboard`
+- Authorization: Bearer `{{access_token}}`
+
+Returns `active_profiles`, `recent_scenarios`, `scenario_stats`, and `ai_calls_this_month` (internal/admin only for the last).
+
+---
+
+## Catalog
+
+### `GET /api/countries`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/countries`
+- Authorization: Bearer `{{access_token}}`
+
+**Behavior:** **admin** — all countries. **internal/client** — only countries that have at least one **active** `calculation_profiles` row.
+
+---
+
+### `GET /api/providers`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/providers`
+- Authorization: Bearer `{{access_token}}`
+
+---
+
+## Calculator
+
+### `GET /api/calculator/available-countries`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/calculator/available-countries`
+- Authorization: Bearer `{{access_token}}`
+
+Returns active profiles as rows with `profile_id`, country/provider info, `rules_count`, `plans_count`. Use a `profile_id` in the next calls.
+
+---
+
+### `GET /api/calculator/profile/:id`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/calculator/profile/{{profile_id}}`
+- Authorization: Bearer `{{access_token}}`
+
+**client** users only receive data if the profile **`status`** is `active` (**403** otherwise).
+
+---
+
+### `POST /api/calculator/calculate`
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/calculator/calculate`
+- Authorization: Bearer `{{access_token}}`
+- Headers: `Content-Type: application/json`
+- Body (raw JSON):
+
+```json
+{
+  "profile_id": "{{profile_id}}",
+  "client_name": "Acme Corp",
   "inputs": {
-    "issued_einvoicing": 1000,
-    "...": 0
+    "issued_b2b_domestic": 500,
+    "issued_credit_note_domestic": 400,
+    "issued_b2b_foreign_er": 0,
+    "issued_b2c_consumer_er": 0,
+    "issued_payment_er": 0,
+    "received_domestic_supplier": 4000,
+    "received_foreign_supplier_er": 2000,
+    "received_foreign_daily_report_days": 0
   }
 }
 ```
 
-**Success:** Returns calculation breakdown, recommendation, `scenario_id`, and `created_at`.  
-**Errors:** `404` unknown profile; `403` client + non-active profile; `422` no approved rules/plans.
+> Replace `inputs` keys with those returned by `GET /api/calculator/profile/:id` for your profile (the sample keys above match the France B2Brouter seed).
+
+**Success:** Full breakdown, `plan_comparison`, `recommended_plan`, plus `scenario_id` and `created_at`.  
+**Errors:** `400` missing `profile_id`/`inputs`; `404` profile; `403` client + non-active profile; `422` no approved rules or plans.
+
+Save `scenario_id` from the response into Postman variable `{{scenario_id}}`.
+
+---
+
+## Scenarios
+
+### Scenario access rules
+
+| Role | `GET /api/scenarios` | `GET /api/scenarios/:id` / `POST .../generate-summary` |
+|------|----------------------|--------------------------------------------------------|
+| **admin** | All (up to 200) | Full access |
+| **internal** | Scenarios whose creator is **admin** or **internal** | **403** if scenario creator is **client** |
+| **client** | `created_by` = self or same `company_id` | Same ownership/company check |
+
+---
+
+### `GET /api/scenarios`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/scenarios`
+- Authorization: Bearer `{{access_token}}`
+
+---
+
+### `GET /api/scenarios/:id`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/scenarios/{{scenario_id}}`
+- Authorization: Bearer `{{access_token}}`
+
+---
 
 ### `POST /api/scenarios/:id/generate-summary`
 
-No body required. On success: `{ "summary": "..." }`.  
-If the summary agent is not configured, the API returns **`503`** with `summary_agent_unavailable` or `summary_agent_misconfigured` so you can distinguish misconfiguration from agent errors.
+**Auth:** Bearer. **Requires** `SUMMARY_AGENT_URL` and `AGENT_API_KEY` on the server — otherwise **`503`** with `summary_agent_unavailable` or `summary_agent_misconfigured`.
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/scenarios/{{scenario_id}}/generate-summary`
+- Authorization: Bearer `{{access_token}}`
+- Body: none
+
+**Success**
+
+```json
+{ "summary": "..." }
+```
+
+AI quota and rate limits may return **`429`**.
 
 ---
 
-## Testing with Postman
+## Admin — catalog
 
-### 1. Environment variables
+### `POST /api/admin/countries`
 
-Create a Postman environment (or collection variables) with:
+**Postman**
 
-| Variable | Example |
-|----------|---------|
-| `base_url` | `http://localhost:3000` |
-| `access_token` | *(paste Supabase JWT after login)* |
-| `profile_id` | *(from `GET .../calculator/available-countries`)* |
-| `scenario_id` | *(from `POST .../calculate` response)* |
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/countries`
+- Authorization: Bearer `{{access_token}}` (admin user)
+- Body (raw JSON):
 
-### 2. Collection-level Authorization
+```json
+{
+  "code": "ES",
+  "name": "Spain"
+}
+```
 
-1. Edit your collection → **Authorization** tab.  
-2. Type: **Bearer Token**.  
-3. Token: `{{access_token}}`.
+`code` is stored uppercased. **409** if code exists.
 
-Individual requests will inherit this unless overridden.
+---
 
-### 3. Suggested request order
+### `POST /api/admin/providers`
 
-1. **`GET {{base_url}}/health`** — No auth. Always **HTTP 200**; JSON shows `status: ok` when `db: connected`, or `status: degraded` when `db: unreachable`. (**`GET {{base_url}}/live`** is a trivial liveness probe used by Railway — no DB check.)
-2. **Obtain JWT** — Use the Frontend login or Supabase dashboard / Auth API; copy the **access token** into `access_token`.  
-3. **`GET {{base_url}}/api/me`** — Confirms `users_profile` exists and role is correct.  
-4. **`GET {{base_url}}/api/user/dashboard`** — Verifies active profiles and recent scenarios.  
-5. **`GET {{base_url}}/api/calculator/available-countries`** — Pick a `profile_id`.  
-6. **`GET {{base_url}}/api/calculator/profile/{{profile_id}}`** — Inspect `inputs` keys.  
-7. **`POST {{base_url}}/api/calculator/calculate`** — Body as above; save `scenario_id`.  
-8. **`GET {{base_url}}/api/scenarios`** and **`GET {{base_url}}/api/scenarios/{{scenario_id}}`** — List + detail.  
-9. **`POST {{base_url}}/api/scenarios/{{scenario_id}}/generate-summary`** — Only after `SUMMARY_AGENT_URL` and `AGENT_API_KEY` are set; otherwise expect **503** with a clear JSON error (still useful for Postman contract tests).
+**Postman**
 
-### 4. Common HTTP status codes
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/providers`
+- Authorization: Bearer `{{access_token}}`
+- Body (raw JSON):
+
+```json
+{
+  "name": "Example PDP",
+  "type": "PDP"
+}
+```
+
+`type` is free text in DB (e.g. `PA`, `PDP`).
+
+---
+
+## Admin — users
+
+### `GET /api/admin/users`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/admin/users`
+- Authorization: Bearer `{{access_token}}`
+
+---
+
+### `POST /api/admin/users`
+
+Creates `users_profile` after the user exists in Supabase Auth.
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/users`
+- Authorization: Bearer `{{access_token}}`
+- Body (raw JSON):
+
+```json
+{
+  "supabase_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "email": "user@example.com",
+  "full_name": "Sample User",
+  "role": "client",
+  "company_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
+```
+
+- `role`: `admin` | `internal` | `client`
+- `company_id` **required** when `role` is `client`
+
+---
+
+### `PATCH /api/admin/users/:id`
+
+**Postman**
+
+- Method: `PATCH`
+- URL: `{{base_url}}/api/admin/users/{{user_id}}`
+- Authorization: Bearer `{{access_token}}`
+- Body (raw JSON) — include any fields to update:
+
+```json
+{
+  "role": "internal",
+  "company_id": null,
+  "active": true,
+  "full_name": "Updated Name"
+}
+```
+
+---
+
+## Admin — calculation profiles
+
+### `GET /api/admin/profiles`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/admin/profiles`
+- Authorization: Bearer `{{access_token}}`
+
+---
+
+### `GET /api/admin/profiles/:id`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/admin/profiles/{{profile_id}}`
+- Authorization: Bearer `{{access_token}}`
+
+Returns profile row plus nested `rules`, `plans`, `assumptions`.
+
+---
+
+### `POST /api/admin/profiles`
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/profiles`
+- Authorization: Bearer `{{access_token}}`
+- Body (raw JSON):
+
+```json
+{
+  "country_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "provider_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "version": "v1.1",
+  "currency": "EUR",
+  "calculation_basis": "PA transactions"
+}
+```
+
+Creates profile in **`draft`** status.
+
+---
+
+### `POST /api/admin/profiles/:id/activate`
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/profiles/{{profile_id}}/activate`
+- Authorization: Bearer `{{access_token}}`
+- Body: none
+
+Requires ≥ **1** approved rule and ≥ **1** approved plan. Archives any other **active** profile for the same country+provider.
+
+---
+
+## Admin — documents
+
+### `GET /api/admin/documents`
+
+**Query:** exactly one of `profile_id` or `country_id` (required).
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/admin/documents?profile_id={{profile_id}}`
+- Authorization: Bearer `{{access_token}}`
+
+(`storage_path` is never returned.)
+
+---
+
+### `POST /api/admin/documents/upload`
+
+**Multipart form** — field name **`file`**. Requires Railway Volume / `DOCUMENTS_PATH` configured.
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/documents/upload`
+- Authorization: Bearer `{{access_token}}`
+- Body: **form-data**
+  - `file` — type *File* (allowed: `.pdf`, `.docx`, `.xlsx`, `.csv`, `.txt`, `.md`)
+  - `country_id` — text
+  - `provider_id` — text
+  - `document_type` — text, one of:  
+    `provider_pricing` | `transaction_guide` | `country_legal` | `contract` | `commercial_confirmation` | `other`
+  - `profile_id` — text (optional; used as folder key when set)
+  - `description` — text (optional)
+
+---
+
+### `POST /api/admin/documents/analyze`
+
+Calls the **document agent** (`DOC_AGENT_URL`) with `AGENT_API_KEY`; subject to AI quota and stricter rate limit.
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/documents/analyze`
+- Authorization: Bearer `{{access_token}}`
+- Headers: `Content-Type: application/json`
+- Body (raw JSON):
+
+```json
+{
+  "profile_id": "{{profile_id}}",
+  "document_ids": ["uuid-doc-1", "uuid-doc-2"]
+}
+```
+
+May return **451** if the agent blocks on copyright.
+
+---
+
+## Admin — transaction rules
+
+### `PATCH /api/admin/rules/:id`
+
+**Postman**
+
+- Method: `PATCH`
+- URL: `{{base_url}}/api/admin/rules/{{rule_id}}`
+- Authorization: Bearer `{{access_token}}`
+- Body (raw JSON) — all optional; only sent fields update:
+
+```json
+{
+  "label": "Updated label",
+  "direction": "Issued",
+  "obligation": "E-invoicing",
+  "operation_group": "Domestic",
+  "pa_transactions_per_item": 2,
+  "reason": "…",
+  "source_excerpt": "…",
+  "confidence": "high"
+}
+```
+
+---
+
+### `POST /api/admin/rules/:id/approve`
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/rules/{{rule_id}}/approve`
+- Authorization: Bearer `{{access_token}}`
+- Body: none
+
+---
+
+### `POST /api/admin/rules/:id/reject`
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/rules/{{rule_id}}/reject`
+- Authorization: Bearer `{{access_token}}`
+- Body (raw JSON, optional):
+
+```json
+{
+  "reason": "Optional rejection note"
+}
+```
+
+---
+
+## Admin — plans
+
+### `PATCH /api/admin/plans/:id`
+
+**Postman**
+
+- Method: `PATCH`
+- URL: `{{base_url}}/api/admin/plans/{{plan_id}}`
+- Authorization: Bearer `{{access_token}}`
+- Body (raw JSON) — optional fields:
+
+```json
+{
+  "plan_name": "Plan 3",
+  "included_pa_transactions": 7200,
+  "annual_fee": 1218,
+  "monthly_fee": null,
+  "extra_transaction_cost": 0.222,
+  "source_excerpt": "…",
+  "confidence": "high"
+}
+```
+
+---
+
+### `POST /api/admin/plans/:id/approve`
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/plans/{{plan_id}}/approve`
+- Authorization: Bearer `{{access_token}}`
+
+---
+
+### `POST /api/admin/plans/:id/reject`
+
+**Postman**
+
+- Method: `POST`
+- URL: `{{base_url}}/api/admin/plans/{{plan_id}}/reject`
+- Authorization: Bearer `{{access_token}}`
+- Body: none
+
+---
+
+## Suggested Postman order (smoke test on Railway)
+
+Use **`{{base_url}}` = `https://planadvisor-dev.up.railway.app`**.
+
+1. `GET {{base_url}}/live` — no API key, no Bearer.
+2. `GET {{base_url}}/health` — no API key, no Bearer.
+3. Set collection variable **`{{pa_plan_api_key}}`** to match Railway **`PA_PLAN_API_KEY`**, and add header **`X-API-Key`** = `{{pa_plan_api_key}}` on all requests from step 4 onward (omit if you run locally without the env var).
+4. Obtain Supabase JWT → set `{{access_token}}`.
+5. `GET {{base_url}}/api/me`
+6. `GET {{base_url}}/api/user/dashboard`
+7. `GET {{base_url}}/api/countries` · `GET {{base_url}}/api/providers`
+8. `GET {{base_url}}/api/calculator/available-countries` → copy `profile_id`
+9. `GET {{base_url}}/api/calculator/profile/{{profile_id}}`
+10. `POST {{base_url}}/api/calculator/calculate` → copy `scenario_id`
+11. `GET {{base_url}}/api/scenarios` · `GET {{base_url}}/api/scenarios/{{scenario_id}}`
+12. `POST {{base_url}}/api/scenarios/{{scenario_id}}/generate-summary` — expect **503** if summary agent is not configured (valid contract test).
+
+Admin-only steps (as an admin user): catalog → profiles → rules/plans → activate → documents as needed.
+
+---
+
+## Common HTTP status codes
 
 | Code | Meaning |
 |------|---------|
-| `401` | Missing/invalid Bearer token. |
-| `403` | Inactive user, missing profile, or role/ownership violation. |
-| `404` | Unknown `profile_id` or `scenario_id`. |
-| `422` | Calculator prerequisites missing (no approved rules/plans). |
-| `429` | AI quota exceeded (`checkAIQuota`) or AI rate limiter. |
-| `503` | Summary agent not configured (`/api/scenarios/.../generate-summary`). **`/health` does not use 503** — use the JSON body to see DB status. |
-
-### 5. Local database seed
-
-To exercise the calculator end-to-end, apply `db/schema.sql` then run `db/seed_france_b2brouter_v1.sql` (or your own seed) so at least one profile is **active** with approved rules and plans. Ensure a matching `users_profile` row exists for your Supabase user **id** (same UUID as `auth.users.id`).
+| `401` | Missing/invalid **`X-API-Key`** (when `PA_PLAN_API_KEY` is set) — checked **first**; or missing/invalid Bearer token (`Unauthorized` JSON from Supabase validation) |
+| `403` | Inactive user, missing `users_profile`, or role/access rule |
+| `404` | Unknown resource |
+| `409` | Conflict (e.g. duplicate country code, duplicate user profile) |
+| `422` | Validation / business rule (e.g. profile activation, calculator prerequisites) |
+| `429` | Global rate limit, AI rate limit, or AI quota (`lib/quota.js`) |
+| `451` | Document analysis blocked (copyright) |
+| `503` | Summary agent not configured (`generate-summary` only) |
 
 ---
 
-## Related admin routes (reference only)
+## Local / seed note
 
-These are **not** customer/internal “interaction” routes but are required to **produce** data the calculator consumes:
+To exercise the calculator on a fresh DB: apply `db/schema.sql`, ensure an **admin** `users_profile` exists, then run `db/seed_france_b2brouter_v1.sql` (or equivalent) so at least one profile is **active** with approved rules and plans. The `users_profile.id` must match the Supabase `auth.users.id` UUID for real logins.
 
-- `POST /api/admin/countries`, `POST /api/admin/providers` — Catalog (admin).  
-- Profiles, documents, analyses, rules/plans — see `server.js` and `routes/` for mounted paths.
-
-After the admin workflow activates a profile, the user endpoints above become meaningful for `client` and `internal` testers.
+**API key:** locally you may leave **`PA_PLAN_API_KEY`** unset so **`X-API-Key`** is not required; production on Railway must define it (see [Authentication](#authentication)).

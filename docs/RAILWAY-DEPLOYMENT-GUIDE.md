@@ -243,9 +243,11 @@ In the Railway dashboard → Express API service → **Variables** tab, add:
 | `SUPABASE_ANON_KEY` | `eyJ...` | From Supabase → Settings → API |
 | `DOCUMENTS_PATH` | `/data/documents` | Must match your Volume mount path |
 | `AGENT_API_KEY` | `<strong-random-secret>` | Shared secret for internal service calls |
+| `PA_PLAN_API_KEY` | `<strong-random-secret>` | Clients send **`X-API-Key`** with this value on **all** routes except `GET /live` and `GET /health`. **Required** when `NODE_ENV=production`. |
 | `NODE_ENV` | `production` | Enables SSL for PostgreSQL |
 | `PORT` | `3000` | Railway sets this automatically too |
 | `FRONTEND_URL` | `https://your-app.netlify.app` | For CORS — your Netlify URL |
+| `TRUST_PROXY_COUNT` | *(omit = default)* | Express **`trust proxy`** hop count; **1** is baked in when unset (correct for Railway’s edge). Set only if you add another reverse proxy in front. |
 
 ### Internal service URLs (set after deploying agents)
 
@@ -264,6 +266,7 @@ railway variables set SUPABASE_URL=https://xxxx.supabase.co
 railway variables set SUPABASE_ANON_KEY=eyJ...
 railway variables set DOCUMENTS_PATH=/data/documents
 railway variables set AGENT_API_KEY=$(openssl rand -hex 32)
+railway variables set PA_PLAN_API_KEY=$(openssl rand -hex 32)
 railway variables set FRONTEND_URL=https://your-app.netlify.app
 ```
 

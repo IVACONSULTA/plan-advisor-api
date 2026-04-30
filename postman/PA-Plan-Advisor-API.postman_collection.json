@@ -1,0 +1,559 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "PA Plan Advisor API",
+    "description": "Import into Postman. Set collection variables: `base_url`, `pa_plan_api_key` (matches Railway `PA_PLAN_API_KEY`), `access_token` (Supabase JWT). **Platform** folder has no auth. All other requests use **Bearer** + **X-API-Key**.\n\nSee `docs/API-USER-ENDPOINTS.md`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://planadvisor-dev.up.railway.app" },
+    { "key": "pa_plan_api_key", "value": "" },
+    { "key": "access_token", "value": "" },
+    { "key": "profile_id", "value": "" },
+    { "key": "scenario_id", "value": "" },
+    { "key": "user_id", "value": "" },
+    { "key": "rule_id", "value": "" },
+    { "key": "plan_id", "value": "" },
+    { "key": "country_id", "value": "" },
+    { "key": "provider_id", "value": "" },
+    { "key": "document_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Platform (no API key, no Bearer)",
+      "item": [
+        {
+          "name": "GET /live",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/live"
+          }
+        },
+        {
+          "name": "GET /health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. User & session",
+      "item": [
+        {
+          "name": "GET /api/me",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/me"
+          }
+        },
+        {
+          "name": "GET /api/user/dashboard",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/user/dashboard"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Catalog",
+      "item": [
+        {
+          "name": "GET /api/countries",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/countries"
+          }
+        },
+        {
+          "name": "GET /api/providers",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/providers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Calculator",
+      "item": [
+        {
+          "name": "GET /api/calculator/available-countries",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/calculator/available-countries"
+          }
+        },
+        {
+          "name": "GET /api/calculator/profile/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/calculator/profile/{{profile_id}}"
+          }
+        },
+        {
+          "name": "POST /api/calculator/calculate",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"client_name\": \"Acme Corp\",\n  \"inputs\": {\n    \"issued_b2b_domestic\": 500,\n    \"issued_credit_note_domestic\": 400,\n    \"issued_b2b_foreign_er\": 0,\n    \"issued_b2c_consumer_er\": 0,\n    \"issued_payment_er\": 0,\n    \"received_domestic_supplier\": 4000,\n    \"received_foreign_supplier_er\": 2000,\n    \"received_foreign_daily_report_days\": 0\n  }\n}\n"
+            },
+            "url": "{{base_url}}/api/calculator/calculate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Scenarios",
+      "item": [
+        {
+          "name": "GET /api/scenarios",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/scenarios"
+          }
+        },
+        {
+          "name": "GET /api/scenarios/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/scenarios/{{scenario_id}}"
+          }
+        },
+        {
+          "name": "POST /api/scenarios/:id/generate-summary",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/scenarios/{{scenario_id}}/generate-summary"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Admin — catalog",
+      "item": [
+        {
+          "name": "POST /api/admin/countries",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"ES\",\n  \"name\": \"Spain\"\n}\n"
+            },
+            "url": "{{base_url}}/api/admin/countries"
+          }
+        },
+        {
+          "name": "POST /api/admin/providers",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Example PDP\",\n  \"type\": \"PDP\"\n}\n"
+            },
+            "url": "{{base_url}}/api/admin/providers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Admin — users",
+      "item": [
+        {
+          "name": "GET /api/admin/users",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/admin/users"
+          }
+        },
+        {
+          "name": "POST /api/admin/users",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supabase_id\": \"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\",\n  \"email\": \"user@example.com\",\n  \"full_name\": \"Sample User\",\n  \"role\": \"client\",\n  \"company_id\": \"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\"\n}\n"
+            },
+            "url": "{{base_url}}/api/admin/users"
+          }
+        },
+        {
+          "name": "PATCH /api/admin/users/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"internal\",\n  \"active\": true,\n  \"full_name\": \"Updated Name\"\n}\n"
+            },
+            "url": "{{base_url}}/api/admin/users/{{user_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Admin — profiles",
+      "item": [
+        {
+          "name": "GET /api/admin/profiles",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/admin/profiles"
+          }
+        },
+        {
+          "name": "GET /api/admin/profiles/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/admin/profiles/{{profile_id}}"
+          }
+        },
+        {
+          "name": "POST /api/admin/profiles",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"country_id\": \"{{country_id}}\",\n  \"provider_id\": \"{{provider_id}}\",\n  \"version\": \"v1.1\",\n  \"currency\": \"EUR\",\n  \"calculation_basis\": \"PA transactions\"\n}\n"
+            },
+            "url": "{{base_url}}/api/admin/profiles"
+          }
+        },
+        {
+          "name": "POST /api/admin/profiles/:id/activate",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/admin/profiles/{{profile_id}}/activate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Admin — documents",
+      "item": [
+        {
+          "name": "GET /api/admin/documents (by profile_id)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/admin/documents?profile_id={{profile_id}}"
+          }
+        },
+        {
+          "name": "POST /api/admin/documents/upload",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Choose a .pdf, .docx, .xlsx, .csv, .txt, or .md file"
+                },
+                { "key": "country_id", "value": "{{country_id}}", "type": "text" },
+                { "key": "provider_id", "value": "{{provider_id}}", "type": "text" },
+                { "key": "profile_id", "value": "{{profile_id}}", "type": "text", "description": "Optional" },
+                {
+                  "key": "document_type",
+                  "value": "provider_pricing",
+                  "type": "text",
+                  "description": "provider_pricing | transaction_guide | country_legal | contract | commercial_confirmation | other"
+                },
+                { "key": "description", "value": "Optional note", "type": "text" }
+              ]
+            },
+            "url": "{{base_url}}/api/admin/documents/upload"
+          }
+        },
+        {
+          "name": "POST /api/admin/documents/analyze",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"document_ids\": [\"{{document_id}}\"]\n}\n"
+            },
+            "url": "{{base_url}}/api/admin/documents/analyze"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Admin — rules",
+      "item": [
+        {
+          "name": "PATCH /api/admin/rules/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Updated label\",\n  \"pa_transactions_per_item\": 2,\n  \"confidence\": \"high\"\n}\n"
+            },
+            "url": "{{base_url}}/api/admin/rules/{{rule_id}}"
+          }
+        },
+        {
+          "name": "POST /api/admin/rules/:id/approve",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/admin/rules/{{rule_id}}/approve"
+          }
+        },
+        {
+          "name": "POST /api/admin/rules/:id/reject",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Optional rejection note\"\n}\n"
+            },
+            "url": "{{base_url}}/api/admin/rules/{{rule_id}}/reject"
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Admin — plans",
+      "item": [
+        {
+          "name": "PATCH /api/admin/plans/:id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan_name\": \"Plan 3\",\n  \"included_pa_transactions\": 7200,\n  \"annual_fee\": 1218,\n  \"extra_transaction_cost\": 0.222\n}\n"
+            },
+            "url": "{{base_url}}/api/admin/plans/{{plan_id}}"
+          }
+        },
+        {
+          "name": "POST /api/admin/plans/:id/approve",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/admin/plans/{{plan_id}}/approve"
+          }
+        },
+        {
+          "name": "POST /api/admin/plans/:id/reject",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{pa_plan_api_key}}", "type": "text" }
+            ],
+            "url": "{{base_url}}/api/admin/plans/{{plan_id}}/reject"
+          }
+        }
+      ]
+    }
+  ]
+}
