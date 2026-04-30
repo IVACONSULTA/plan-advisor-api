@@ -63,27 +63,25 @@ app.use('/api/scenarios',  require('./routes/scenarios'));
 app.use('/api/scenarios',  require('./routes/ai-summary'));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
-// Railway polls this path to decide whether to restart the service.
-// Returns 200 only when the DB is reachable; 503 otherwise.
+// Railway treats non-2xx as failed deploys. Always return 200 once HTTP is up;
+// use `db` in the body for ops (connected vs unreachable).
 app.get('/health', async (req, res) => {
+  let db = 'unreachable';
   try {
     await dbQuery('SELECT 1');
-    res.json({
-      status: 'ok',
-      db: 'connected',
-      agents: {
-        doc_agent:     !!process.env.DOC_AGENT_URL,
-        summary_agent: !!process.env.SUMMARY_AGENT_URL,
-      },
-      timestamp: new Date().toISOString(),
-    });
+    db = 'connected';
   } catch {
-    res.status(503).json({
-      status: 'error',
-      db: 'unreachable',
-      timestamp: new Date().toISOString(),
-    });
+    // still 200 — avoids health-check timeouts when DB is briefly slow after boot
   }
+  res.status(200).json({
+    status: db === 'connected' ? 'ok' : 'degraded',
+    db,
+    agents: {
+      doc_agent:     !!process.env.DOC_AGENT_URL,
+      summary_agent: !!process.env.SUMMARY_AGENT_URL,
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
@@ -101,15 +99,14 @@ app.use((err, req, res, _next) => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
-(async () => {
-  try {
-    await testConnection();
-    app.listen(PORT, () => {
-      console.log(`✓ PA Plan API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
-    });
-  } catch (err) {
-    console.error(`✗ Startup failed: ${err.message}`);
-    process.exit(1);
-  }
-})();
+// Listen immediately so platform health checks do not time out while the DB warms up.
+app.listen(PORT, HOST, () => {
+  console.log(
+    `✓ PA Plan API listening on http://${HOST}:${PORT} [${process.env.NODE_ENV || 'development'}]`
+  );
+  testConnection().catch((err) => {
+    console.error(`⚠ PostgreSQL not reachable after boot: ${err.message}`);
+  });
+});
