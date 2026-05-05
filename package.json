@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "db:schema": "node scripts/run-psql-file.js db/schema.sql",
     "db:seed": "node scripts/run-psql-file.js db/seed_local_dev.sql",
+    "db:sync-users": "node scripts/sync-supabase-auth-users-to-users-profile.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

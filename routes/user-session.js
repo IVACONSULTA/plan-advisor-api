@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../lib/db');
 const { requireAuth } = require('../lib/supabase');
+const { calculatorRuleGroupsCountSelect } = require('../lib/calculator-rules-count');
 
 /**
  * GET /api/me
@@ -55,8 +56,7 @@ router.get('/user/dashboard', requireAuth, async (req, res) => {
       `SELECT cp.id AS profile_id, cp.version, cp.currency, cp.active_from,
               co.code AS country_code, co.name AS country_name,
               pr.id AS provider_id, pr.name AS provider_name, pr.type AS provider_type,
-              (SELECT COUNT(*)::int FROM transaction_rules tr
-                 WHERE tr.profile_id = cp.id AND tr.status = 'approved') AS rules_count,
+              ${calculatorRuleGroupsCountSelect()} AS rules_count,
               (SELECT COUNT(*)::int FROM plans pl
                  WHERE pl.profile_id = cp.id AND pl.status = 'approved') AS plans_count
        FROM calculation_profiles cp

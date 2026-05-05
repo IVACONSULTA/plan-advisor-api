@@ -133,7 +133,15 @@ This runs, in order:
 
 Safe to **re-run** (uses `ON CONFLICT` / scoped deletes). Individual files are still available if you need only part of the data.
 
-**Emails in `users_profile`** match the addresses in `seed_iva_consulta_companies_and_users.sql`. JWT login only works if those rows’ **`id`** values match your Supabase **`auth.users.id`**; adjust the seed or use `db/seed_users_profile_from_supabase.sql` as a template with your real Supabase emails.
+**Emails in `users_profile`** must match Supabase sign-in emails; **`users_profile.id`** must equal **Authentication → Users → User UID** (same as JWT `sub`).
+
+**Sync prod Supabase Auth users into Railway `users_profile`**
+
+1. In **`.env`**, set **`SUPABASE_URL`** to your **production** project, add **`SUPABASE_SERVICE_ROLE_KEY`** (Dashboard → **Project Settings** → **API** → `service_role` — treat as a secret), and set **`DATABASE_URL`** to your **Railway** Postgres URL.
+2. **Preview only** (no writes to Postgres): `npm run db:sync-users -- --dry-run`
+3. **Write to Railway:** `npm run db:sync-users` (same command **without** `--dry-run`)
+
+Script: `scripts/sync-supabase-auth-users-to-users-profile.js`. It upserts **`id` = Auth user UUID**, **`email`**, **`full_name`** (from user metadata or derived), **`role`** (`user_metadata.role` / `app_metadata.role` or default **`client`**), **`company_id`** (optional metadata UUID), **`active`** (respects ban). Roles outside `admin` / `internal` / `client` become **`client`**. Fix **`company_id`** and roles afterward with **`PATCH /api/admin/users/:id`** if metadata is missing. Remove **`SUPABASE_SERVICE_ROLE_KEY`** from `.env` when finished if you prefer not to keep it.
 
 **If production has data not committed to git**, copy from Railway instead of (or after) the repo seeds:
 

@@ -279,7 +279,7 @@ Returns `active_profiles`, `recent_scenarios`, `scenario_stats`, and `ai_calls_t
 - URL: `{{base_url}}/api/calculator/available-countries`
 - Authorization: Bearer `{{access_token}}`
 
-Returns active profiles as rows with `profile_id`, country/provider info, `rules_count`, `plans_count`. Use a `profile_id` in the next calls.
+Returns active profiles as rows with `profile_id`, country/provider info, `rules_count` (number of **calculator input groups**: distinct approved rules merged by `operation_group`, direction, obligation, and multiplier), `plans_count`. Use a `profile_id` in the next calls.
 
 ---
 
@@ -322,6 +322,8 @@ Returns active profiles as rows with `profile_id`, country/provider info, `rules
 }
 ```
 
+Optional **`calculator_form`** (from grouped calculator UIs): `{ "groups": [ { "display_label": "Domestic B2B", "input_keys": ["issued_einvoicing", "received_einvoicing"] } ] }`. When present, it is stored on the scenario as `input_json.calculator_form` and used for breakdown Type labels. The scenario always stores volumes as **`input_json.inputs`** (older rows may still be a flat map `{ "input_key": number }` only).
+
 > Replace `inputs` keys with those returned by `GET /api/calculator/profile/:id` for your profile (the sample keys above match the France B2Brouter seed).
 
 **Success:** Full breakdown, `plan_comparison`, `recommended_plan`, plus `scenario_id` and `created_at`.  
@@ -335,7 +337,7 @@ Save `scenario_id` from the response into Postman variable `{{scenario_id}}`.
 
 ### Scenario access rules
 
-| Role | `GET /api/scenarios` | `GET /api/scenarios/:id` / `POST .../generate-summary` |
+| Role | `GET /api/scenarios` | `GET /api/scenarios/:id`, export, delete, `POST .../generate-summary` |
 |------|----------------------|--------------------------------------------------------|
 | **admin** | All (up to 200) | Full access |
 | **internal** | Scenarios whose creator is **admin** or **internal** | **403** if scenario creator is **client** |
@@ -360,6 +362,34 @@ Save `scenario_id` from the response into Postman variable `{{scenario_id}}`.
 - Method: `GET`
 - URL: `{{base_url}}/api/scenarios/{{scenario_id}}`
 - Authorization: Bearer `{{access_token}}`
+
+---
+
+### `GET /api/scenarios/:id/export`
+
+Downloads a **JSON** snapshot (`Content-Disposition: attachment`). Query: `format=json` (default). PDF is not implemented on the API.
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/scenarios/{{scenario_id}}/export?format=json`
+- Authorization: Bearer `{{access_token}}`
+
+Same access rules as `GET /api/scenarios/:id`. Response body wraps `{ exported_at, format, scenario }` with the same row fields as the detail GET (without `created_by_role`).
+
+---
+
+### `DELETE /api/scenarios/:id`
+
+Permanently deletes the scenario. Related `ai_usage_logs` rows for that scenario are removed first (within a transaction).
+
+**Postman**
+
+- Method: `DELETE`
+- URL: `{{base_url}}/api/scenarios/{{scenario_id}}`
+- Authorization: Bearer `{{access_token}}`
+
+**Success:** `204 No Content`. **404** if not found; **403** if access denied (same as detail GET).
 
 ---
 

@@ -77,8 +77,9 @@ app.use('/api/admin',      require('./routes/documents'));
 app.use('/api/admin',      require('./routes/rules'));
 app.use('/api/admin',      require('./routes/plans'));
 app.use('/api/calculator', require('./routes/calculator'));
-app.use('/api/scenarios',  require('./routes/scenarios'));
+// Register summary routes before generic `GET /:id` so `POST .../generate-summary` always hits this router.
 app.use('/api/scenarios',  require('./routes/ai-summary'));
+app.use('/api/scenarios',  require('./routes/scenarios'));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 // Always HTTP 200 once the process is listening (matches Railway + our deploy docs).

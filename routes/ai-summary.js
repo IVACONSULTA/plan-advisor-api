@@ -1,16 +1,29 @@
-const express   = require('express');
-const router    = express.Router();
-const axios     = require('axios');
-const rateLimit = require('express-rate-limit');
-const db        = require('../lib/db');
-const { requireAuth }           = require('../lib/supabase');
-const { checkAIQuota, logAIUsage } = require('../lib/quota');
+const express = require("express");
+const router = express.Router();
+const axios = require("axios");
+const rateLimit = require("express-rate-limit");
+const db = require("../lib/db");
+const { requireAuth } = require("../lib/supabase");
+const { checkAIQuota, logAIUsage } = require("../lib/quota");
 
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  message: { error: 'Too many summary requests. Please wait a minute.' },
+  message: { error: "Too many summary requests. Please wait a minute." },
 });
+
+/** Flat `{ input_key: volume }` for the summary agent (legacy `input_json` or nested `{ inputs }`). */
+function volumeMapFromScenarioInputJson(inputJson) {
+  if (!inputJson || typeof inputJson !== "object") return {};
+  if (
+    inputJson.inputs &&
+    typeof inputJson.inputs === "object" &&
+    !Array.isArray(inputJson.inputs)
+  ) {
+    return inputJson.inputs;
+  }
+  return inputJson;
+}
 
 /**
  * POST /api/scenarios/:id/generate-summary
@@ -18,22 +31,26 @@ const aiLimiter = rateLimit({
  * No recalculation — only passes the saved result to the agent.
  */
 router.post(
-  '/:id/generate-summary',
+  "/:id/generate-summary",
   requireAuth,
   checkAIQuota,
   aiLimiter,
   async (req, res) => {
     if (!process.env.SUMMARY_AGENT_URL) {
       return res.status(503).json({
-        error: 'summary_agent_unavailable',
+        error: "summary_agent_unavailable",
         message:
-          'SUMMARY_AGENT_URL is not set. Configure the summary agent URL in Railway (see docs/PA-PLAN-ADVISOR-GUIDE.md).',
+          "SUMMARY_AGENT_URL is not set. Configure the summary agent URL in Railway (see docs/PA-PLAN-ADVISOR-GUIDE.md).",
       });
     }
-    if (!process.env.AGENT_API_KEY) {
+    const agentApiKey = String(
+      process.env.AGENT_API_KEY || process.env.SUMMARY_AGENT_API_KEY || "",
+    ).trim();
+    if (!agentApiKey) {
       return res.status(503).json({
-        error: 'summary_agent_misconfigured',
-        message: 'AGENT_API_KEY is not set; cannot call the summary agent.',
+        error: "summary_agent_misconfigured",
+        message:
+          "AGENT_API_KEY is not set (or use legacy SUMMARY_AGENT_API_KEY). Must match the summary service X-API-Key. See .env.example.",
       });
     }
 
@@ -54,68 +71,78 @@ router.post(
          JOIN providers pr            ON pr.id = cp.provider_id
          JOIN users_profile creator  ON creator.id = s.created_by
          WHERE s.id = $1`,
-        [id]
+        [id],
       );
 
-      if (!rows.length) return res.status(404).json({ error: 'Scenario not found.' });
+      if (!rows.length)
+        return res.status(404).json({ error: "Scenario not found." });
 
       const scenario = rows[0];
 
-      if (req.userRole === 'internal') {
-        if (!['admin', 'internal'].includes(scenario.created_by_role)) {
-          return res.status(403).json({ error: 'Access denied.' });
+      if (req.userRole === "internal") {
+        if (!["admin", "internal"].includes(scenario.created_by_role)) {
+          return res.status(403).json({ error: "Access denied." });
         }
       }
 
       // Access control — client can only summarise own/company scenarios
-      if (req.userRole === 'client') {
+      if (req.userRole === "client") {
         const { rows: up } = await db.query(
           `SELECT company_id FROM users_profile WHERE id = $1`,
-          [req.user.id]
+          [req.user.id],
         );
         const ownScenario = scenario.created_by === req.user.id;
-        const sameCompany = up[0]?.company_id && scenario.company_id === up[0].company_id;
+        const sameCompany =
+          up[0]?.company_id && scenario.company_id === up[0].company_id;
         if (!ownScenario && !sameCompany) {
-          return res.status(403).json({ error: 'Access denied.' });
+          return res.status(403).json({ error: "Access denied." });
         }
       }
 
       const result = scenario.result_json;
 
+      const rawInputJson = scenario.input_json;
+      const inputsForAgent = volumeMapFromScenarioInputJson(rawInputJson);
+
       // 2. Call Summary Agent (App 4) via internal Railway network
       const { data: agentResponse } = await axios.post(
         `${process.env.SUMMARY_AGENT_URL}/generate-summary`,
         {
-          country:              scenario.country_name,
-          provider:             scenario.provider_name,
-          profile_version:      scenario.profile_version,
-          inputs:               scenario.input_json,
+          country: scenario.country_name,
+          provider: scenario.provider_name,
+          profile_version: scenario.profile_version,
+          inputs: inputsForAgent,
+          ...(rawInputJson &&
+          typeof rawInputJson === "object" &&
+          rawInputJson.calculator_form
+            ? { calculator_form: rawInputJson.calculator_form }
+            : {}),
           transaction_breakdown: result.transaction_breakdown,
-          plan_comparison:      result.plan_comparison,
-          recommended_plan:     result.recommended_plan,
-          assumptions:          result.assumptions || [],
+          plan_comparison: result.plan_comparison,
+          recommended_plan: result.recommended_plan,
+          assumptions: result.assumptions || [],
         },
         {
-          headers: { 'X-API-Key': process.env.AGENT_API_KEY },
+          headers: { "X-API-Key": agentApiKey },
           timeout: 60_000,
-        }
+        },
       );
 
       const summary = agentResponse.summary;
 
       // 3. Persist the summary
-      await db.query(
-        `UPDATE scenarios SET ai_summary = $1 WHERE id = $2`,
-        [summary, id]
-      );
+      await db.query(`UPDATE scenarios SET ai_summary = $1 WHERE id = $2`, [
+        summary,
+        id,
+      ]);
 
       // 4. Log AI usage
       await logAIUsage({
-        userId:     req.user.id,
-        action:     'generate_summary',
-        model:      'dspy',
+        userId: req.user.id,
+        action: "generate_summary",
+        model: "dspy",
         scenarioId: id,
-        inputTokens:  agentResponse.usage?.input_tokens  || null,
+        inputTokens: agentResponse.usage?.input_tokens || null,
         outputTokens: agentResponse.usage?.output_tokens || null,
         estimatedCost: agentResponse.usage?.estimated_cost || null,
       });
@@ -126,9 +153,9 @@ router.post(
         return res.status(err.response.status).json(err.response.data);
       }
       console.error(err);
-      res.status(500).json({ error: 'Failed to generate summary.' });
+      res.status(500).json({ error: "Failed to generate summary." });
     }
-  }
+  },
 );
 
 module.exports = router;

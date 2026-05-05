@@ -4,6 +4,55 @@ const db      = require('../lib/db');
 const { requireAuth } = require('../lib/supabase');
 
 /**
+ * Load scenario with profile joins; enforce same access rules as detail GET.
+ * @returns {Promise<{ fail: false, scenario: object }|{ fail: true, status: number, body: object }>}
+ */
+async function fetchScenarioForUser(req, id) {
+  const { rows } = await db.query(
+    `SELECT s.*,
+            cp.version, cp.currency,
+            co.name AS country_name,
+            pr.name AS provider_name,
+            up.email AS created_by_email,
+            up.role AS created_by_role
+     FROM scenarios s
+     JOIN calculation_profiles cp ON cp.id = s.profile_id
+     JOIN countries co            ON co.id = cp.country_id
+     JOIN providers pr            ON pr.id = cp.provider_id
+     JOIN users_profile up        ON up.id = s.created_by
+     WHERE s.id = $1`,
+    [id],
+  );
+
+  if (!rows.length) {
+    return { fail: true, status: 404, body: { error: 'Scenario not found.' } };
+  }
+
+  const scenario = rows[0];
+
+  if (req.userRole === 'internal') {
+    if (!['admin', 'internal'].includes(scenario.created_by_role)) {
+      return { fail: true, status: 403, body: { error: 'Access denied.' } };
+    }
+  }
+
+  if (req.userRole === 'client') {
+    const { rows: userProfile } = await db.query(
+      `SELECT company_id FROM users_profile WHERE id = $1`,
+      [req.user.id],
+    );
+    const ownScenario    = scenario.created_by === req.user.id;
+    const sameCompany    = userProfile[0]?.company_id &&
+                           scenario.company_id === userProfile[0].company_id;
+    if (!ownScenario && !sameCompany) {
+      return { fail: true, status: 403, body: { error: 'Access denied.' } };
+    }
+  }
+
+  return { fail: false, scenario };
+}
+
+/**
  * GET /api/scenarios
  * - Admin: all scenarios
  * - Internal: scenarios whose creator role is admin or internal
@@ -91,6 +140,71 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
+// Must be registered before GET /:id so "export" is not captured as :id
+router.get('/:id/export', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const format = String(req.query.format || 'json').toLowerCase();
+
+  const r = await fetchScenarioForUser(req, id);
+  if (r.fail) return res.status(r.status).json(r.body);
+
+  if (format !== 'json') {
+    return res.status(400).json({
+      error: 'Unsupported format.',
+      message: 'Use ?format=json. PDF export is not implemented on the API.',
+    });
+  }
+
+  const scenario = r.scenario;
+  const { created_by_role: _omit, ...scenarioSafe } = scenario;
+
+  const exportPayload = {
+    exported_at: new Date().toISOString(),
+    format: 'plan_advisor_scenario_v1',
+    scenario: scenarioSafe,
+  };
+
+  const rawName = (scenario.client_name || 'scenario')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-') || 'scenario';
+  const nameBase = rawName.slice(0, 48);
+  const filename = `${nameBase}-${String(id).slice(0, 8)}.json`;
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(`${JSON.stringify(exportPayload, null, 2)}\n`);
+});
+
+router.delete('/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  const r = await fetchScenarioForUser(req, id);
+  if (r.fail) return res.status(r.status).json(r.body);
+
+  try {
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM ai_usage_logs WHERE scenario_id = $1`, [id]);
+      const del = await client.query(`DELETE FROM scenarios WHERE id = $1 RETURNING id`, [id]);
+      await client.query('COMMIT');
+      if (!del.rows.length) {
+        return res.status(404).json({ error: 'Scenario not found.' });
+      }
+      return res.status(204).send();
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to delete scenario.' });
+  }
+});
+
 /**
  * GET /api/scenarios/:id
  * Full scenario detail — admin (all); internal (creator must be admin/internal); client (owner or same company).
@@ -99,48 +213,10 @@ router.get('/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
 
   try {
-    const { rows } = await db.query(
-      `SELECT s.*,
-              cp.version, cp.currency,
-              co.name AS country_name,
-              pr.name AS provider_name,
-              up.email AS created_by_email,
-              up.role AS created_by_role
-       FROM scenarios s
-       JOIN calculation_profiles cp ON cp.id = s.profile_id
-       JOIN countries co            ON co.id = cp.country_id
-       JOIN providers pr            ON pr.id = cp.provider_id
-       JOIN users_profile up        ON up.id = s.created_by
-       WHERE s.id = $1`,
-      [id]
-    );
+    const r = await fetchScenarioForUser(req, id);
+    if (r.fail) return res.status(r.status).json(r.body);
 
-    if (!rows.length) return res.status(404).json({ error: 'Scenario not found.' });
-
-    const scenario = rows[0];
-
-    // Internal users only see scenarios created by admin/internal (not external clients)
-    if (req.userRole === 'internal') {
-      if (!['admin', 'internal'].includes(scenario.created_by_role)) {
-        return res.status(403).json({ error: 'Access denied.' });
-      }
-    }
-
-    // Access control
-    if (req.userRole === 'client') {
-      const { rows: userProfile } = await db.query(
-        `SELECT company_id FROM users_profile WHERE id = $1`,
-        [req.user.id]
-      );
-      const ownScenario    = scenario.created_by === req.user.id;
-      const sameCompany    = userProfile[0]?.company_id &&
-                             scenario.company_id === userProfile[0].company_id;
-      if (!ownScenario && !sameCompany) {
-        return res.status(403).json({ error: 'Access denied.' });
-      }
-    }
-
-    const { created_by_role: _omit, ...rest } = scenario;
+    const { created_by_role: _omit, ...rest } = r.scenario;
     res.json(rest);
   } catch (err) {
     console.error(err);

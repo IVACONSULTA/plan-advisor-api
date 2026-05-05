@@ -1,7 +1,11 @@
 -- =============================================================================
 -- Map Supabase `public.profiles`-style users into Railway `users_profile`
 -- =============================================================================
--- Before running: set each email to the **exact** address shown in Supabase
+-- Prefer automating from Auth: set SUPABASE_SERVICE_ROLE_KEY in .env and run:
+--   npm run db:sync-users
+-- See README §4 and scripts/sync-supabase-auth-users-to-users-profile.js.
+--
+-- Before running manually: set each email to the **exact** address shown in Supabase
 -- Dashboard → Authentication → Users for that user id (or sign-in will still
 -- work on id match, but lists and admin tooling expect correct email).
 --
