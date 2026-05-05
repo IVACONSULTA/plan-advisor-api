@@ -93,7 +93,11 @@ router.get('/profiles', requireAuth, requireAdmin, async (req, res) => {
       `SELECT cp.id, cp.version, cp.status, cp.currency, cp.active_from, cp.active_to,
               cp.created_at, cp.approved_at,
               co.code AS country_code, co.name AS country_name,
-              pr.name AS provider_name
+              pr.name AS provider_name, pr.type AS provider_type,
+              (SELECT COUNT(*)::int FROM transaction_rules tr
+                 WHERE tr.profile_id = cp.id AND tr.status = 'approved') AS rules_count,
+              (SELECT COUNT(*)::int FROM plans pl
+                 WHERE pl.profile_id = cp.id AND pl.status = 'approved') AS plans_count
        FROM calculation_profiles cp
        JOIN countries co ON co.id = cp.country_id
        JOIN providers pr ON pr.id = cp.provider_id

@@ -23,7 +23,9 @@ In Postman, set:
 | `access_token` | Supabase JWT after login |
 | `profile_id`, `scenario_id`, … | From prior responses |
 
-**Default headers for every request under `/api`:** add **`X-API-Key: {{pa_plan_api_key}}`** at the collection level when the gate is enabled; keep **Bearer** auth as documented per request. Omit **`X-API-Key`** only for **`GET /live`** and **`GET /health`**, or when running locally with **`PA_PLAN_API_KEY`** unset.
+**Postman secrets:** Add **`pa_plan_api_key`** and **`access_token`** to a **Postman Environment** (recommended) or Globals — **not** as empty collection defaults. **Select that environment** in the top-right dropdown before sending. The repo collection sends **`Authorization: Bearer {{access_token}}`** and **`X-API-Key`** as **explicit headers** on each `/api/*` request.
+
+**Default headers for every request under `/api`:** **`X-API-Key: {{pa_plan_api_key}}`** and **`Authorization: Bearer {{access_token}}`** when the gate and JWT are required. Omit **`X-API-Key`** only for **`GET /live`** and **`GET /health`**, or when running locally with **`PA_PLAN_API_KEY`** unset.
 
 **Path prefixes**
 
@@ -49,7 +51,11 @@ X-API-Key: <same value as PA_PLAN_API_KEY>
 In **`NODE_ENV=production`**, **`PA_PLAN_API_KEY` is required** at startup (the process exits if unset). Local dev may omit it; the gate is then disabled and a warning is logged.
 
 Wrong or missing key → **`401`** with `{ "error": "Invalid or missing API key.", "hint": "..." }`.  
-This runs **before** JWT validation: a missing **`X-API-Key`** returns that response even if the Bearer token would be valid.
+Hints distinguish **empty/missing header** (Postman variable / Environment not selected) from **value mismatch** (copy from wrong Railway service or extra characters).
+
+**Railway:** `PA_PLAN_API_KEY` must live on the **same service** that runs this API (e.g. **pa-plan-api**), not on Postgres or Supabase. The value must match what you send in **`X-API-Key`** (no quotes unless they are part of the secret).
+
+This check runs **before** JWT validation.
 
 ### Supabase JWT (most `/api/*` routes)
 
@@ -63,7 +69,7 @@ Authorization: Bearer {{access_token}}
 (Postman normalizes `X-API-Key`; Express accepts `x-api-key`.)
 
 The API validates the JWT with Supabase, then loads **`role`** and **`active`** from PostgreSQL (`users_profile`).  
-Missing profile → **`403`** (`User profile not found` pattern). Inactive user → **`403`**.
+Missing profile → **`403`** with **`User profile not found`** — see [Fix: no `users_profile` row](#fix-no-users_profile-row-for-your-supabase-user). Inactive user → **`403`**.
 
 **Obtain `access_token` (example — replace with your Supabase project):**
 
@@ -80,7 +86,35 @@ Content-Type: application/json
 
 Use `access_token` from the JSON response in Postman variable `{{access_token}}`.
 
+### Fix: no `users_profile` row for your Supabase user
+
+Supabase only proves **who** signed in. This API also requires a matching row in **Railway Postgres**:
+
+- **`users_profile.id`** must equal **`auth.users.id`** (the UUID shown in Supabase → **Authentication → Users**).
+
+**First admin (no API user yet):** insert via SQL against Railway Postgres (e.g. Railway **Query** tab / `railway connect` / `psql`), after creating `companies` if needed:
+
+```sql
+INSERT INTO users_profile (id, email, full_name, role, company_id, active)
+VALUES (
+  '<paste-user-uuid-from-supabase>',
+  'you@example.com',
+  'Your Name',
+  'admin',
+  NULL,
+  true
+);
+```
+
+Use a real **`company_id`** if you already have a `companies` row and want the user linked to it (`SELECT id FROM companies LIMIT 1`).
+
+Or use **`POST /api/admin/users`** with another user’s **admin** JWT once that admin exists.
+
+**Postman:** after deploying the API update, a **`403`** may include **`supabase_user_id`** so you can paste the correct UUID into SQL or the admin payload.
+
 **Postman tip:** Add collection variables `pa_plan_api_key` and `access_token`. Use **Authorization** → Bearer `{{access_token}}`, and add a collection header `X-API-Key` = `{{pa_plan_api_key}}` (or per-request), whenever `PA_PLAN_API_KEY` is set on the server.
+
+**Do not** set the collection’s **Authorization** tab to **API Key** or **Bearer Token** if your imported requests already send **`Authorization: Bearer {{access_token}}`** and **`X-API-Key`** as headers — Postman may send an **empty** Bearer. Use **Collection auth: No Auth**, create an **Environment**, run **`0. Supabase — login`** in the bundled collection to save **`access_token`**, and keep **`pa_plan_api_key`** in the same environment.
 
 ---
 
@@ -174,14 +208,14 @@ If Postgres is unreachable, expect `"status": "degraded"` and `"db": "unreachabl
 
 ## Shared Postman defaults (all `/api/*` sections below)
 
-For **every** endpoint from **`GET /api/me`** onward, unless you disabled the gate locally:
+Use a **Postman Environment** with **`pa_plan_api_key`** and **`access_token`**. Re-import [`postman/PA-Plan-Advisor-API.postman_collection.json`](../postman/PA-Plan-Advisor-API.postman_collection.json) so each request includes explicit **`Authorization: Bearer {{access_token}}`** (avoids empty Bearer when collection variables shadow the environment).
 
-1. **Headers:** `X-API-Key` = `{{pa_plan_api_key}}` (matches Railway **`PA_PLAN_API_KEY`**).
-2. **Authorization:** Type **Bearer Token**, value `{{access_token}}` — or equivalent **Authorization** header.
+1. **Headers:** `X-API-Key` = `{{pa_plan_api_key}}`
+2. **Headers:** `Authorization` = `Bearer {{access_token}}`
 
-`multipart/form-data` requests (**document upload**) still need **`X-API-Key`** in the **Headers** tab (not inside the form body).
+`multipart/form-data` (**document upload**) keeps **`X-API-Key`** and **`Authorization`** on the **Headers** tab, not in the form body.
 
-The per-endpoint **Postman** blocks below list **Bearer** only — **add `X-API-Key` as above** whenever the server has the env var set.
+The per-endpoint **Postman** bullets below may only mention Bearer for brevity — the imported collection already includes both headers.
 
 ---
 
@@ -673,18 +707,19 @@ May return **451** if the agent blocks on copyright.
 
 Use **`{{base_url}}` = `https://planadvisor-dev.up.railway.app`**.
 
-1. `GET {{base_url}}/live` — no API key, no Bearer.
-2. `GET {{base_url}}/health` — no API key, no Bearer.
-3. Set collection variable **`{{pa_plan_api_key}}`** to match Railway **`PA_PLAN_API_KEY`**, and add header **`X-API-Key`** = `{{pa_plan_api_key}}` on all requests from step 4 onward (omit if you run locally without the env var).
-4. Obtain Supabase JWT → set `{{access_token}}`.
-5. `GET {{base_url}}/api/me`
-6. `GET {{base_url}}/api/user/dashboard`
-7. `GET {{base_url}}/api/countries` · `GET {{base_url}}/api/providers`
-8. `GET {{base_url}}/api/calculator/available-countries` → copy `profile_id`
-9. `GET {{base_url}}/api/calculator/profile/{{profile_id}}`
-10. `POST {{base_url}}/api/calculator/calculate` → copy `scenario_id`
-11. `GET {{base_url}}/api/scenarios` · `GET {{base_url}}/api/scenarios/{{scenario_id}}`
-12. `POST {{base_url}}/api/scenarios/{{scenario_id}}/generate-summary` — expect **503** if summary agent is not configured (valid contract test).
+1. **Collection → Authorization → No Auth** (do not use API Key / Bearer at collection level).
+2. Create/select **Environment** with `pa_plan_api_key`, `supabase_url`, `supabase_anon_key`, `supabase_email`, `supabase_password`.
+3. `GET {{base_url}}/live` — no API key, no Bearer.
+4. `GET {{base_url}}/health` — no API key, no Bearer.
+5. Run **`0. Supabase — login`** once — saves **`access_token`** into the Environment (or paste JWT manually into `access_token`).
+6. `GET {{base_url}}/api/me`
+7. `GET {{base_url}}/api/user/dashboard`
+8. `GET {{base_url}}/api/countries` · `GET {{base_url}}/api/providers`
+9. `GET {{base_url}}/api/calculator/available-countries` → copy `profile_id`
+10. `GET {{base_url}}/api/calculator/profile/{{profile_id}}`
+11. `POST {{base_url}}/api/calculator/calculate` → copy `scenario_id`
+12. `GET {{base_url}}/api/scenarios` · `GET {{base_url}}/api/scenarios/{{scenario_id}}`
+13. `POST {{base_url}}/api/scenarios/{{scenario_id}}/generate-summary` — expect **503** if summary agent is not configured (valid contract test).
 
 Admin-only steps (as an admin user): catalog → profiles → rules/plans → activate → documents as needed.
 
