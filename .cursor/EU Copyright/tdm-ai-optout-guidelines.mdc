@@ -1,0 +1,309 @@
+---
+description: Text and Data Mining (TDM) exception rules and AI opt-out compliance guidelines based on DSM Directive (EU) 2019/790 Articles 3 and 4. Apply when designing AI systems that process, analyze, or extract information from third-party documents and datasets.
+globs: agents/*.py, guardrails/*.py, utils/*.py, tools/*.py, tests/*.py
+---
+
+# TDM Exception and AI Opt-Out Guidelines
+
+## DSM Directive (EU) 2019/790 — TDM Framework
+
+The Digital Single Market Directive establishes two distinct TDM exceptions and a critical **opt-out mechanism** that any AI system ingesting third-party content must implement.
+
+---
+
+## 📚 Article 3 — TDM for Research Organisations
+
+### Scope
+
+**PERMITTED** text and data mining where:
+
+- The beneficiary is a **research organisation or cultural heritage institution**
+- The purpose is **scientific research** (not commercial)
+- The organisation has **lawful access** to the content
+- Mining is for purposes of scientific research only
+
+### Key Rules
+
+- **CANNOT** be overridden by contract — rightsholders cannot contractually exclude Art. 3 beneficiaries
+- **DOES NOT** require opt-out detection — Art. 3 has no opt-out mechanism
+- **REQUIRES** lawful access to the source (subscription, open access, license)
+- **REQUIRES** storing copies only as long as necessary for the research purpose
+
+### Who Qualifies
+
+- Universities and research institutes (non-profit or public interest)
+- Cultural heritage institutions (libraries, archives, museums)
+- Public research bodies as defined by Member State law
+- **DOES NOT** include: commercial companies, commercial startups, for-profit entities
+
+### Implementation Note
+
+```python
+# Art. 3 only applies to qualifying organisations
+# For commercial AI systems, use Art. 4 (with opt-out check)
+RESEARCH_ORGANISATION_EXCEPTION = {
+    'article': 'DSM Directive Art. 3',
+    'requires_opt_out_check': False,  # No opt-out for Art. 3
+    'commercial_use_allowed': False,
+    'storage_limitation': 'Only as long as necessary for research',
+    'contractual_override': 'NOT PERMITTED — rightsholders cannot opt out'
+}
+```
+
+---
+
+## 📚 Article 4 — TDM for Commercial Use (With Opt-Out)
+
+### Scope
+
+**PERMITTED** text and data mining for **any purpose**, including commercial, where:
+
+- The beneficiary has **lawful access** to the content
+- The rightsholder has **NOT expressly reserved** (opted out) their rights
+
+### The Opt-Out Right (Critical)
+
+**Art. 4(3)** — Rightsholders may **expressly reserve** their rights against TDM, including AI processing. When they do:
+
+- The Art. 4 exception **no longer applies**
+- Processing the content with AI/LLM **constitutes copyright infringement**
+- The reservation must be expressed in a **machine-readable format** for online content
+- For physical/offline documents: any clear textual statement constitutes a valid opt-out
+
+### 🚫 Prohibited Actions When Opt-Out Is Detected
+
+- **NEVER** pass document text to an LLM after detecting a valid opt-out
+- **NEVER** index or embed the document in a vector database
+- **NEVER** use the document as RAG context
+- **NEVER** extract rules, plans, or assumptions from the document using AI
+- **NEVER** store extracted information derived from an opted-out document
+
+---
+
+## 🔍 AI Opt-Out Pattern Detection
+
+### Mandatory Scan Zones
+
+Always scan at minimum the **first 3,000 characters** of a document (headers, copyright notices, preambles). Also scan common positions:
+
+- Page 1 header/footer
+- Document metadata (`<dc:rights>`, PDF metadata fields)
+- Last page legal notices
+- Appendices titled "Legal notices", "Copyright", "Terms of use"
+- robots.txt for online sources
+- HTML meta tags: `<meta name="robots" content="noai,noimageai">`
+
+### Confirmed Opt-Out Patterns (Multi-language)
+
+```python
+AI_OPTOUT_PATTERNS = [
+    # --- English ---
+    r'(expressly\s+)?(prohibit|oppose|object|forbid|restrict).{0,80}'
+    r'(AI|artificial intelligence|machine learning|LLM|large language model)',
+
+    r'(no|not\s+permitted|not\s+allowed).{0,60}'
+    r'(AI|artificial intelligence).{0,60}'
+    r'(processing|training|ingestion|mining|inference)',
+
+    r'text\s+and\s+data\s+mining.{0,60}(prohibited|not\s+permitted|reserved)',
+    r'TDM\s+(opt.?out|restriction|prohibited)',
+    r'AI.{0,30}(opt.?out|restriction|prohibited)',
+    r'no\s+AI\s+(training|processing|use)',
+    r'reserved\s+for.{0,60}(AI|machine\s+learning)',
+
+    # --- French (AFNOR and publisher patterns) ---
+    r"s'oppose\s+expressément.{0,120}(intelligence\s+artificielle|IA)",
+    r"s'oppose\s+(également\s+)?à.{0,120}(fouille\s+de\s+textes|création\s+dérivée).{0,80}"
+    r"(IA|intelligence artificielle)",
+    r"(intégration|transmission|absorption).{0,60}(IA|intelligence\s+artificielle)",
+    r"(interdit|s'oppose).{0,80}(IA|intelligence artificielle)",
+
+    # --- Spanish ---
+    r'(prohíbe|se\s+opone|reserva).{0,80}(inteligencia\s+artificial|IA)',
+    r'prohibido.{0,60}(aprendizaje\s+automático|inteligencia\s+artificial)',
+
+    # --- German ---
+    r'(verbietet|untersagt|ausdrücklich\s+vorbehalten).{0,80}'
+    r'(künstliche\s+Intelligenz|KI|maschinelles\s+Lernen)',
+
+    # --- Italian ---
+    r'(vieta|si\s+oppone).{0,80}(intelligenza\s+artificiale|IA)',
+
+    # --- Dutch ---
+    r'(verbiedt|verzet\s+zich).{0,80}(kunstmatige\s+intelligentie|AI)',
+]
+```
+
+### Reproduction Restriction Patterns (→ RESTRICTED, not BLOCKED)
+
+```python
+REPRODUCTION_RESTRICTION_PATTERNS = [
+    # General "all rights reserved" — InfoSoc Art. 2, not TDM opt-out
+    r'all\s+rights\s+reserved',
+    r'todos\s+los\s+derechos\s+reservados',
+    r'tous\s+droits\s+réservés',
+    r'alle\s+Rechte\s+vorbehalten',
+    r'tutti\s+i\s+diritti\s+riservati',
+    r'©.{0,80}(all\s+rights|rights\s+reserved)',
+
+    # Reproduction restrictions (NOT the same as AI opt-out)
+    r'reproduction\s+(prohibited|not\s+permitted|reserved)',
+    r'no\s+part.{0,100}(reproduced|copied|transmitted|stored)',
+    r'may\s+not\s+be\s+reproduced',
+    r'unauthorized\s+reproduction',
+]
+# NOTE: These patterns make a document RESTRICTED (paraphrase only),
+# NOT BLOCKED — unless combined with an AI opt-out pattern.
+```
+
+---
+
+## 🤖 Compliant TDM Checker Implementation
+
+```python
+# guardrails/copyright_checker.py
+"""
+EU Copyright Compliance Guardrail
+References:
+- DSM Directive (EU) 2019/790, Arts. 3 and 4 (TDM exception + opt-out)
+- InfoSoc Directive 2001/29/EC, Art. 2 (reproduction right)
+- EU AI Act (EU) 2024/1689, Art. 53(1)(c) (copyright compliance for AI)
+"""
+import re
+from typing import List, Dict, Tuple
+
+class CopyrightChecker:
+
+    SCAN_CHARS = 3000  # Scan first 3000 chars (headers/preamble)
+
+    def check_documents(
+        self, documents: List[Dict]
+    ) -> Tuple[bool, List[Dict]]:
+        """
+        Check all documents for TDM opt-out and reproduction restrictions.
+
+        Returns:
+            (all_clear: bool, results: list of per-document check results)
+        """
+        results = []
+        all_clear = True
+
+        for doc in documents:
+            text_sample = doc.get('text', '')[:self.SCAN_CHARS]
+            filename = doc.get('filename', 'unknown')
+
+            ai_blocked, ai_reason = self._check_ai_optout(text_sample, filename)
+            repro_restricted, repro_reason = self._check_reproduction_rights(
+                text_sample, filename
+            )
+
+            if ai_blocked:
+                all_clear = False
+                results.append({
+                    'filename': filename,
+                    'status': 'blocked',  # 🚫 BLOCKED
+                    'reason': ai_reason,
+                    'restriction_type': 'ai_optout',
+                    'legal_basis': 'DSM Directive Art. 4 opt-out / EU AI Act Art. 53(1)(c)',
+                    'action': (
+                        'Document must be reviewed manually by Admin. '
+                        'AI processing not permitted.'
+                    )
+                })
+            elif repro_restricted:
+                results.append({
+                    'filename': filename,
+                    'status': 'restricted',  # 🟡 RESTRICTED
+                    'reason': repro_reason,
+                    'restriction_type': 'reproduction_rights',
+                    'legal_basis': 'InfoSoc Directive 2001/29/EC, Art. 2',
+                    'action': (
+                        'Extract only factual rules. '
+                        'source_excerpt must be paraphrased, not verbatim.'
+                    )
+                })
+            else:
+                results.append({
+                    'filename': filename,
+                    'status': 'clear',  # 🟢 CLEAR
+                    'reason': 'No copyright restrictions detected.',
+                    'action': 'Document may be processed. Cite source in extracted rules.'
+                })
+
+        return all_clear, results
+```
+
+---
+
+## 🛡️ LLM System Prompt Requirements
+
+### For CLEAR Documents
+
+```python
+CLEAR_DOC_INSTRUCTION = """
+Process this document and extract calculation rules and plans.
+Cite the source document name for every extracted rule or plan.
+"""
+```
+
+### For RESTRICTED Documents (mandatory addition)
+
+```python
+RESTRICTED_DOC_INSTRUCTION = """
+IMPORTANT — COPYRIGHT RESTRICTION ACTIVE:
+This document has reproduction restrictions under InfoSoc Directive 2001/29/EC.
+- Extract ONLY factual information (prices, fees, transaction volumes, thresholds).
+- Do NOT reproduce verbatim text from this document.
+- Paraphrase all excerpts. Do not quote directly.
+- The source_excerpt field must contain a paraphrase, not a direct quote.
+"""
+```
+
+### For BLOCKED Documents — Never Sent to LLM
+
+```python
+# BLOCKED documents must NEVER reach the LLM.
+# Raise a copyright error before calling any AI model.
+raise CopyrightViolationError(
+    "Document has AI opt-out. Cannot be processed by any LLM. "
+    "Legal basis: DSM Directive Art. 4 opt-out."
+)
+```
+
+---
+
+## 📋 TDM Compliance Checklist
+
+### Pre-Processing
+
+- [ ] **Lawful access verification**: Does the system have lawful access to the document?
+- [ ] **Opt-out scan**: Run AI opt-out pattern check on first 3,000 chars
+- [ ] **Reproduction rights scan**: Check for "All Rights Reserved" patterns
+- [ ] **Source URL check**: For online sources, check robots.txt and HTML meta tags
+- [ ] **License declaration review**: Has the uploader declared the document license?
+
+### During Processing
+
+- [ ] **BLOCKED documents**: Return HTTP 451, log, notify Admin — never pass to LLM
+- [ ] **RESTRICTED documents**: Add paraphrase instruction to system prompt
+- [ ] **All documents**: Include source citation instruction in system prompt
+- [ ] **Output validation**: Verify no verbatim text from RESTRICTED docs in output
+
+### Post-Processing
+
+- [ ] **Status recording**: Update `documents.copyright_status` in the database
+- [ ] **Audit log**: Record opt-out detection results in `guardrail_audit`
+- [ ] **Blocked doc escalation**: Admin notified for all BLOCKED documents
+- [ ] **Paraphrase verification**: Review RESTRICTED doc source_excerpts are paraphrased
+
+---
+
+## 🚨 Enforcement Consequences
+
+**Processing a document after detecting a valid Art. 4 opt-out constitutes:**
+
+- Copyright infringement under InfoSoc Directive 2001/29/EC (Art. 2)
+- Potential EU AI Act violation (Art. 53(1)(c) for GPAI providers)
+- Exposure to injunctions, damages, and statutory penalties under IPRED Directive 2004/48/EC
+- In France: potential AFNOR/INPI enforcement action
+- In Germany: potential injunction under §§ 44a, 44b UrhG (German copyright transposition)

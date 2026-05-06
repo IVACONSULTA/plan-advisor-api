@@ -1,0 +1,5 @@
+# Used only if you build with Nixpacks. Railway is configured in railway.json to
+# use the root Dockerfile instead.
+
+[variables]
+NODE_VERSION = "20"

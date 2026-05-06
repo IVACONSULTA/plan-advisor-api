@@ -1,0 +1,203 @@
+---
+description: EU AI Act compliant risk management framework for designing and maintaining AI agent functionalities. Based on Articles 9, 13, 60, and 72 of the EU Artificial Intelligence Act.
+globs: agents/*.py, utils/*.py, scripts/*.py
+---
+
+# AI Risk Management Framework
+
+## EU AI Act Compliance for Agent Development
+
+### 1. Risk Management System Establishment
+
+#### Continuous Lifecycle Management
+
+- Implement a documented risk management system that operates continuously throughout the entire AI system lifecycle
+- Conduct regular systematic reviews and updates of risk assessments
+- Maintain iterative processes for risk identification, evaluation, and mitigation
+- Ensure risk management procedures are integrated into the development workflow
+
+#### Documentation Requirements
+
+- Document all risk management processes, decisions, and outcomes
+- Maintain traceability of risk assessments and mitigation measures
+- Keep records of testing procedures and validation results
+- Update documentation with each system modification or update
+
+### 2. Risk Identification and Analysis
+
+#### Known and Foreseeable Risks
+
+- Identify risks to health, safety, and fundamental rights when the AI system is used as intended
+- Analyze potential impacts on user privacy, data protection, and decision-making autonomy
+- Assess risks related to system reliability, accuracy, and performance degradation
+- Consider risks from system integration with other AI components or external services
+
+#### Misuse Scenario Analysis
+
+- Evaluate risks that may emerge from reasonably foreseeable misuse
+- Consider adversarial inputs and potential system manipulation
+- Assess risks from unintended use cases or deployment contexts
+- Analyze potential for bias amplification or discriminatory outcomes
+
+#### Post-Market Risk Assessment
+
+- Continuously evaluate new risks based on post-deployment monitoring data
+- Analyze user feedback and incident reports for emerging risk patterns
+- Monitor system performance metrics for signs of degradation or unexpected behavior
+- Track changes in the operational environment that may introduce new risks
+
+### 3. Risk Evaluation and Mitigation
+
+#### Design-Based Risk Elimination
+
+- Prioritize elimination or reduction of risks through system design and development
+- Implement robust input validation and sanitization mechanisms
+- Design fail-safe mechanisms for critical system failures
+- Ensure graceful degradation when operating under adverse conditions
+
+#### Control and Mitigation Measures
+
+- Implement adequate mitigation measures for risks that cannot be eliminated
+- Establish monitoring systems for real-time risk detection
+- Create automated responses for known risk scenarios
+- Implement human oversight mechanisms where appropriate
+
+#### Residual Risk Management
+
+- Ensure residual risks are judged acceptable based on intended use
+- Document rationale for accepting residual risks
+- Implement ongoing monitoring of residual risk levels
+- Establish thresholds for risk escalation and intervention
+
+### 4. Transparency and Information Provision
+
+#### User Information Requirements
+
+- Provide clear, concise instructions for proper system use
+- Document system capabilities and known limitations
+- Explain the AI system's intended purpose and appropriate use cases
+- Describe performance characteristics and expected behaviors
+
+#### Deployer Education
+
+- Provide training materials for system deployers and operators
+- Explain risk mitigation measures and their proper implementation
+- Document best practices for system deployment and maintenance
+- Establish communication channels for ongoing support and updates
+
+#### Output Interpretability
+
+- Design system outputs to be interpretable by human operators
+- Provide explanations for AI-generated recommendations or decisions
+- Include confidence scores or uncertainty indicators where appropriate
+- Ensure outputs enable appropriate human judgment and decision-making
+
+### 5. Testing and Validation
+
+#### Pre-Deployment Testing
+
+- Conduct comprehensive testing throughout the development process
+- Test system performance against predefined metrics and probabilistic thresholds
+- Validate compliance with all applicable requirements before deployment
+- Perform adversarial testing to identify potential vulnerabilities
+
+#### Real-World Condition Testing
+
+- Include testing in realistic operational environments when appropriate
+- Validate system performance under expected deployment conditions
+- Test system behavior with real user interactions and data
+- Ensure testing protocols comply with privacy and ethical requirements
+
+#### Continuous Validation
+
+- Implement ongoing testing procedures for deployed systems
+- Monitor system performance against established benchmarks
+- Conduct periodic re-validation of system capabilities
+- Update testing procedures as system requirements evolve
+
+### 6. Post-Market Monitoring
+
+#### Monitoring Plan Implementation
+
+- Establish systematic data collection on system performance and risks
+- Monitor for incidents, malfunctions, and unexpected behaviors
+- Track key performance indicators and risk metrics
+- Implement automated monitoring where technically feasible
+
+#### Incident Response
+
+- Establish procedures for reporting and investigating incidents
+- Implement rapid response protocols for critical issues
+- Maintain incident logs and root cause analysis documentation
+- Coordinate with relevant authorities when required
+
+#### Performance Analytics
+
+- Analyze collected data for trends and patterns
+- Identify areas for system improvement and risk reduction
+- Generate regular reports on system performance and compliance
+- Use monitoring data to inform future development decisions
+
+### 7. Vulnerable Population Protection
+
+#### Impact Assessment
+
+- Evaluate potential adverse impacts on individuals under 18
+- Assess risks to other vulnerable groups (elderly, disabled, marginalized communities)
+- Consider accessibility requirements and inclusive design principles
+- Implement additional safeguards for vulnerable population interactions
+
+#### Special Protections
+
+- Implement enhanced consent mechanisms for vulnerable users
+- Provide additional transparency and explanation for decisions affecting vulnerable groups
+- Establish stricter performance and safety standards when vulnerable populations are involved
+- Ensure human oversight is available for sensitive decisions
+
+### 8. Integration and Compliance
+
+#### System Integration Risks
+
+- Assess risks when integrating with external AI systems or services
+- Evaluate compatibility and interaction effects between system components
+- Test system behavior in integrated environments
+- Monitor for emergent risks from system interactions
+
+#### Regulatory Compliance
+
+- Ensure compliance with applicable AI governance frameworks
+- Stay informed of regulatory updates and requirements
+- Implement compliance monitoring and reporting procedures
+- Maintain audit trails for regulatory review
+
+#### Continuous Improvement
+
+- Establish feedback loops for continuous risk management improvement
+- Regular review and update of risk management procedures
+- Incorporate lessons learned from incidents and near-misses
+- Adapt risk management approaches based on evolving best practices
+
+### 9. Implementation Guidelines
+
+#### Development Integration
+
+- Integrate risk management checkpoints into development sprints
+- Require risk assessment for all new features and modifications
+- Implement automated compliance checking where possible
+- Ensure all team members understand risk management requirements
+
+#### Code Review Requirements
+
+- Include risk assessment in code review processes
+- Check for implementation of required safeguards and controls
+- Verify compliance with risk mitigation measures
+- Document risk considerations in code comments and documentation
+
+#### Deployment Criteria
+
+- Establish risk-based deployment approval criteria
+- Require successful risk assessment completion before deployment
+- Implement staged deployment approaches for high-risk changes
+- Maintain rollback capabilities for rapid risk response
+
+This framework ensures that all AI agent development and modifications comply with EU AI Act requirements while maintaining system effectiveness and user safety.

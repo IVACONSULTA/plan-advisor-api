@@ -1,0 +1,364 @@
+---
+description: Comprehensive EU copyright compliance framework for AI systems processing third-party documents. Based on DSM Directive 2019/790, InfoSoc Directive 2001/29/EC, Database Directive 96/9/EC, and EU AI Act Art. 53. Apply as the master compliance reference for document ingestion, analysis, storage, and AI inference pipelines.
+globs: agents/*.py, guardrails/*.py, utils/*.py, tools/*.py, tests/*.py, scripts/*.py
+---
+
+# EU Copyright Compliance Framework for AI Systems
+
+## 1. Compliance System Establishment
+
+### Continuous Lifecycle Management
+
+- Implement copyright compliance checks as **mandatory guardrails** before any LLM invocation — not optional post-processing
+- Maintain a documented copyright status for every ingested document in the system database
+- Conduct regular audits of stored documents as rightsholders may update their opt-out declarations
+- Integrate compliance checks into the document ingestion CI/CD pipeline — documents must never reach storage without passing copyright classification
+
+### Documentation Requirements
+
+- Record `copyright_status` (`clear`, `restricted`, `blocked`) per document in the database
+- Store `copyright_reason` for all non-clear documents (the matched pattern and its legal basis)
+- Maintain `guardrail_audit` logs per analysis run, including `processing_id`, classification results, and blocked documents
+- Preserve the copyright assessment even after the document is deleted — audit trails are immutable
+
+---
+
+## 2. Copyright Risk Identification and Analysis
+
+### Copyright Risk Levels
+
+| Risk Level | Status | Trigger | Action |
+|---|---|---|---|
+| 🚫 BLOCKED | AI opt-out detected | DSM Art. 4(3) opt-out pattern found | HTTP 451, notify Admin, never pass to LLM |
+| 🔴 HIGH | Database extraction | >50% of protected database extracted | Obtain license |
+| 🟡 RESTRICTED | Reproduction restricted | "All Rights Reserved" or similar | Paraphrase only, factual extraction only |
+| 🟢 CLEAR | No restrictions | Open license, public domain, or no protection | Cite source, proceed with processing |
+
+### Known and Foreseeable Copyright Risks in AI Pipelines
+
+- **Document ingestion**: Loading copyrighted PDFs/DOCX into storage constitutes reproduction (InfoSoc Art. 2)
+- **Vector indexing**: Embedding copyrighted text in a RAG vector store is a persistent reproduction
+- **LLM prompting**: Including copyrighted text in a prompt is a temporary reproduction (potentially Art. 5(1))
+- **Output reproduction**: LLM output that quotes verbatim text from RESTRICTED docs violates Art. 2
+- **Database extraction**: Extracting structured data from tariff/pricing databases may trigger the sui generis right (Database Directive Art. 7)
+- **Fine-tuning**: Using opted-out documents in fine-tuning violates EU AI Act Art. 53(1)(c)
+
+### Post-Deployment Risk Assessment
+
+- Monitor for new opt-out declarations from rightsholders (e.g., publisher policy updates, AFNOR updates)
+- Re-scan documents annually or when their source publisher/rightsholder is known to have updated their terms
+- Track CJEU judgments on copyright + AI (evolving case law in 2025-2026)
+
+---
+
+## 3. Guardrail Architecture
+
+### Mandatory Two-Layer Guardrail
+
+```python
+# guardrails/copyright_pipeline.py
+"""
+Master copyright compliance pipeline.
+Must run before every LLM inference call that uses third-party documents.
+"""
+from guardrails.copyright_checker import CopyrightChecker
+from guardrails.output_validator import OutputCopyrightValidator
+
+class CopyrightCompliancePipeline:
+    """
+    Two-layer copyright guardrail:
+    Layer 1 (Pre-LLM):  Classify documents, block opted-out content
+    Layer 2 (Post-LLM): Validate output contains no verbatim RESTRICTED text
+    """
+
+    def __init__(self):
+        self.checker = CopyrightChecker()
+        self.validator = OutputCopyrightValidator()
+
+    # --- LAYER 1: Pre-LLM ---
+
+    def pre_llm_check(self, documents: list) -> dict:
+        """
+        Run before any LLM inference call.
+        Returns processable documents and blocks opted-out ones.
+        """
+        all_clear, results = self.checker.check_documents(documents)
+
+        blocked = [r for r in results if r['status'] == 'blocked']
+        if blocked:
+            # Hard stop — do not call LLM at all if any doc is blocked
+            raise CopyrightViolationError(
+                blocked_docs=[d['filename'] for d in blocked],
+                reasons=[d['reason'] for d in blocked],
+                http_status=451
+            )
+
+        # Return processable docs with their constraint level
+        processable = [
+            {
+                **doc,
+                'copyright_status': next(
+                    r['status'] for r in results if r['filename'] == doc['filename']
+                )
+            }
+            for doc in documents
+        ]
+
+        return {
+            'processable_documents': processable,
+            'copyright_results': results,
+            'all_clear': all_clear
+        }
+
+    def build_system_prompt_constraints(self, copyright_results: list) -> str:
+        """
+        Build copyright constraint instructions for the LLM system prompt.
+        """
+        has_restricted = any(r['status'] == 'restricted' for r in copyright_results)
+
+        constraints = [
+            "CITATION REQUIREMENT: Every extracted rule or plan must include the source document name.",
+        ]
+
+        if has_restricted:
+            constraints.append(
+                "PARAPHRASE REQUIREMENT: Documents marked as 'restricted' have reproduction "
+                "restrictions under InfoSoc Directive 2001/29/EC. Do NOT reproduce verbatim "
+                "text from these documents. Paraphrase all excerpts. Extract factual "
+                "information only (prices, thresholds, transaction counts)."
+            )
+
+        return "\n".join(constraints)
+
+    # --- LAYER 2: Post-LLM ---
+
+    def post_llm_check(self, output: dict, copyright_results: list) -> dict:
+        """
+        Run after LLM inference.
+        Validates output complies with copyright constraints.
+        """
+        restricted_docs = [
+            r for r in copyright_results if r['status'] == 'restricted'
+        ]
+
+        # Check that no rules/plans have status='active' (also EU AI Act check)
+        for item in output.get('rules', []) + output.get('plans', []):
+            if item.get('status') == 'active':
+                raise ComplianceError(
+                    "Output validation failed: item has status='active'. "
+                    "All proposed items must have status='pending'."
+                )
+            item['status'] = 'pending'
+
+        # Validate source_excerpts for RESTRICTED documents
+        violations = self.validator.check_verbatim_excerpts(
+            output, restricted_docs
+        )
+        if violations:
+            raise CopyrightViolationError(
+                violations=violations,
+                message="Output contains verbatim text from RESTRICTED documents."
+            )
+
+        return output
+```
+
+---
+
+## 4. Transparency and Attribution
+
+### Citation Obligations
+
+Every item (rule, plan, assumption) extracted from a document must include:
+
+```python
+REQUIRED_CITATION_FIELDS = {
+    'source_document_id': 'UUID of the source document in documents table',
+    'source_excerpt': 'Paraphrased (not verbatim) excerpt from source document',
+    'confidence': 'high | medium | low — agent confidence in the extraction',
+}
+```
+
+**Rules:**
+
+- `source_excerpt` must always be a paraphrase for RESTRICTED documents — never a direct quote
+- `source_excerpt` for CLEAR documents may be a short direct quote (≤10 words per Infopaq doctrine)
+- `source_document_id` must reference the actual document in the database — never null for AI-extracted rules
+- The `confidence` field enables human reviewers to prioritize which rules need manual verification
+
+### AI Disclosure (EU AI Act Art. 50)
+
+Any AI-generated content presented to end users must be disclosed:
+
+```python
+def add_ai_disclosure(output: dict) -> dict:
+    """Add mandatory AI disclosure to user-facing AI-generated content."""
+    output['ai_generated'] = True
+    output['ai_disclosure'] = (
+        "This content was generated by an AI system based on the documents provided. "
+        "All proposed rules and plans require human review and approval before use."
+    )
+    output['human_review_required'] = True
+    return output
+```
+
+---
+
+## 5. Testing and Validation
+
+### Pre-Deployment Testing
+
+```python
+class CopyrightComplianceTestSuite:
+    """Test suite for copyright guardrail validation."""
+
+    def test_ai_optout_blocking(self):
+        """Verify documents with AI opt-out patterns are blocked (HTTP 451)."""
+        # AFNOR-style French opt-out
+        doc_afnor = {
+            'filename': 'afnor_test.pdf',
+            'text': (
+                "AFNOR s'oppose expressément à l'utilisation de ses publications pour "
+                "l'entraînement ou l'intégration dans des systèmes d'intelligence artificielle."
+            )
+        }
+        all_clear, results = CopyrightChecker().check_documents([doc_afnor])
+        assert not all_clear
+        assert results[0]['status'] == 'blocked'
+        assert results[0]['restriction_type'] == 'ai_optout'
+
+    def test_restricted_paraphrase_enforcement(self):
+        """Verify RESTRICTED documents get paraphrase instruction."""
+        doc_restricted = {
+            'filename': 'pricing.pdf',
+            'text': '© 2024 All Rights Reserved. Annual fee: €1,200 for 5,000 transactions.'
+        }
+        all_clear, results = CopyrightChecker().check_documents([doc_restricted])
+        assert results[0]['status'] == 'restricted'
+        # Verify paraphrase action is set
+        assert 'paraphrased' in results[0]['action'].lower()
+
+    def test_clear_document_citation(self):
+        """Verify CLEAR documents still require citation."""
+        doc_clear = {
+            'filename': 'open_guide.pdf',
+            'text': 'Open Government Licence v3.0. Annual fee: €800 for 3,000 transactions.'
+        }
+        _, results = CopyrightChecker().check_documents([doc_clear])
+        assert results[0]['status'] == 'clear'
+
+    def test_verbatim_output_rejection(self):
+        """Verify post-LLM check rejects verbatim excerpts from RESTRICTED docs."""
+        verbatim_output = {
+            'rules': [{
+                'source_excerpt': 'All rights reserved. No part of this document may be reproduced.',
+                'status': 'pending'
+            }]
+        }
+        restricted_results = [{'status': 'restricted', 'filename': 'test.pdf'}]
+        # Should raise CopyrightViolationError
+        with pytest.raises(CopyrightViolationError):
+            CopyrightCompliancePipeline().post_llm_check(
+                verbatim_output, restricted_results
+            )
+```
+
+---
+
+## 6. Post-Deployment Monitoring
+
+### Monitoring Plan
+
+- **Per-document**: Log `copyright_status`, `processing_id`, and `guardrail_audit` for every document processed
+- **Per-analysis**: Record blocked documents, restricted documents, and all opt-out patterns matched
+- **Per-month**: Audit the `documents` table for documents whose status is `pending` (unclassified)
+- **Per-quarter**: Review new publisher/rightsholder opt-out policies for documents in active use
+
+### Incident Response
+
+```python
+class CopyrightIncidentResponse:
+
+    def handle_violation(self, violation_type: str, document_id: str,
+                         severity: str):
+        if severity == 'CRITICAL':
+            # Immediately suspend processing of all documents from same source
+            self.suspend_source_documents(document_id)
+            # Purge any verbatim extractions from the database
+            self.purge_verbatim_extractions(document_id)
+            # Notify Admin
+            self.notify_admin(violation_type, document_id)
+
+        # Log incident with full context
+        self.log_copyright_incident(violation_type, document_id, severity)
+        # Initiate re-classification of affected documents
+        self.schedule_reclassification(document_id)
+```
+
+### Key Monitoring Metrics
+
+- Count of BLOCKED documents per ingestion run
+- Count of RESTRICTED documents with paraphrase violations in output
+- Ratio of clear / restricted / blocked documents per country/provider profile
+- Frequency of copyright guardrail triggers by document source
+
+---
+
+## 7. Compliance Checklist — Master
+
+### Phase 0: System Design
+
+- [ ] `CopyrightChecker` implemented with AI opt-out patterns (EN/FR/ES/DE/IT/NL)
+- [ ] Hard block implemented for BLOCKED documents — never reaches LLM
+- [ ] Paraphrase constraint injected into system prompt for RESTRICTED documents
+- [ ] `documents.copyright_status` enum defined: `pending | clear | restricted | blocked`
+- [ ] `documents.copyright_reason` field exists for storing matched pattern
+- [ ] `guardrail_audit` JSONB field exists in `document_analyses` table
+
+### Phase 1: Document Ingestion
+
+- [ ] Copyright scan runs on upload — not only on analysis
+- [ ] `copyright_status` set to `pending` on upload
+- [ ] `copyright_status` updated to final classification after scan
+- [ ] BLOCKED documents flagged to Admin immediately on upload
+
+### Phase 2: AI Analysis
+
+- [ ] Layer 1 (pre-LLM) check runs before CrewAI/DSPy/OpenAI call
+- [ ] BLOCKED documents raise error and return HTTP 451 — never processed
+- [ ] RESTRICTED documents receive paraphrase instruction in system prompt
+- [ ] Layer 2 (post-LLM) validates source_excerpts for verbatim content
+- [ ] All extracted rules/plans include `source_document_id` and `source_excerpt`
+- [ ] `guardrail_audit` stored with every `document_analyses` record
+
+### Phase 3: Human Review
+
+- [ ] Admin can see copyright status per document in the review interface
+- [ ] BLOCKED documents shown with reason and "Manual review required" notice
+- [ ] RESTRICTED source_excerpts labeled as paraphrased in the UI
+
+### Phase 4: Ongoing Compliance
+
+- [ ] Annual re-scan of all active documents for updated opt-out declarations
+- [ ] Copyright compliance tested in CI/CD (opt-out detection unit tests)
+- [ ] New opt-out patterns added as publisher policies evolve
+- [ ] Compliance incident log reviewed quarterly
+
+---
+
+## 8. Legal Reference Quick Guide
+
+| Topic | Directive / Regulation | Article | Summary |
+|---|---|---|---|
+| Reproduction right | InfoSoc 2001/29/EC | Art. 2 | Any reproduction requires license or exception |
+| Communication to public | InfoSoc 2001/29/EC | Art. 3 | Distribution to users requires license or exception |
+| Transient copy exception | InfoSoc 2001/29/EC | Art. 5(1) | Temporary RAM copies OK if technically necessary |
+| TDM research exception | DSM 2019/790 | Art. 3 | Research orgs only, no opt-out possible |
+| TDM commercial exception | DSM 2019/790 | Art. 4 | Any use, **opt-out overrides** |
+| Database extraction | Database Directive 96/9/EC | Art. 7 | Substantial part extraction requires license |
+| AI copyright compliance | EU AI Act 2024/1689 | Art. 53(1)(c) | GPAI providers must respect copyright |
+| Training data transparency | EU AI Act 2024/1689 | Art. 53(1)(d) | Publish summary of training data |
+| AI output disclosure | EU AI Act 2024/1689 | Art. 50 | Label AI-generated content |
+| Infopaq doctrine | CJEU C-5/08 | — | 11 words may constitute protected expression |
+| Moral rights | Berne Convention | Art. 6bis | Attribution + integrity rights — not waivable |
+| Enforcement | IPRED 2004/48/EC | Arts. 7–12 | Injunctions, damages, provisional measures |
