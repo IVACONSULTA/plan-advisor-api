@@ -6,6 +6,20 @@ const db = require("../lib/db");
 const { requireAuth } = require("../lib/supabase");
 const { checkAIQuota, logAIUsage } = require("../lib/quota");
 
+/** Debug logs (always on; omit large payloads and secrets). */
+function logSummary(event, detail = {}) {
+  const safe = { ...detail };
+  if (safe.agentUrl) {
+    try {
+      const u = new URL(safe.agentUrl);
+      safe.agentUrl = `${u.origin}${u.pathname}`;
+    } catch {
+      delete safe.agentUrl;
+    }
+  }
+  console.log("[ai-summary]", event, safe);
+}
+
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -36,7 +50,10 @@ router.post(
   checkAIQuota,
   aiLimiter,
   async (req, res) => {
+    const { id } = req.params;
+
     if (!process.env.SUMMARY_AGENT_URL) {
+      logSummary("503 summary_agent_unavailable", { scenarioId: id });
       return res.status(503).json({
         error: "summary_agent_unavailable",
         message:
@@ -47,6 +64,7 @@ router.post(
       process.env.AGENT_API_KEY || process.env.SUMMARY_AGENT_API_KEY || "",
     ).trim();
     if (!agentApiKey) {
+      logSummary("503 summary_agent_misconfigured", { scenarioId: id });
       return res.status(503).json({
         error: "summary_agent_misconfigured",
         message:
@@ -54,7 +72,11 @@ router.post(
       });
     }
 
-    const { id } = req.params;
+    logSummary("request", {
+      scenarioId: id,
+      userId: req.user?.id,
+      userRole: req.userRole,
+    });
 
     try {
       // 1. Fetch the scenario
@@ -74,13 +96,32 @@ router.post(
         [id],
       );
 
-      if (!rows.length)
+      if (!rows.length) {
+        logSummary("404 scenario_not_found", { scenarioId: id });
         return res.status(404).json({ error: "Scenario not found." });
+      }
 
       const scenario = rows[0];
 
+      logSummary("scenario_loaded", {
+        scenarioId: id,
+        profileId: scenario.profile_id,
+        country: scenario.country_name,
+        provider: scenario.provider_name,
+        profileVersion: scenario.profile_version,
+        createdByRole: scenario.created_by_role,
+        hasResultJson: !!scenario.result_json,
+        inputKeysCount: Object.keys(
+          volumeMapFromScenarioInputJson(scenario.input_json),
+        ).length,
+      });
+
       if (req.userRole === "internal") {
         if (!["admin", "internal"].includes(scenario.created_by_role)) {
+          logSummary("403 internal_creator_role", {
+            scenarioId: id,
+            createdByRole: scenario.created_by_role,
+          });
           return res.status(403).json({ error: "Access denied." });
         }
       }
@@ -95,6 +136,13 @@ router.post(
         const sameCompany =
           up[0]?.company_id && scenario.company_id === up[0].company_id;
         if (!ownScenario && !sameCompany) {
+          logSummary("403 client_not_owner_same_company", {
+            scenarioId: id,
+            ownScenario,
+            sameCompany: !!sameCompany,
+            userCompanyId: up[0]?.company_id ?? null,
+            scenarioCompanyId: scenario.company_id ?? null,
+          });
           return res.status(403).json({ error: "Access denied." });
         }
       }
@@ -104,9 +152,25 @@ router.post(
       const rawInputJson = scenario.input_json;
       const inputsForAgent = volumeMapFromScenarioInputJson(rawInputJson);
 
+      const agentUrl = `${process.env.SUMMARY_AGENT_URL}/generate-summary`;
+      const t0 = Date.now();
+      logSummary("agent_call_start", {
+        scenarioId: id,
+        agentUrl,
+        timeoutMs: 60_000,
+        volumeKeys: Object.keys(inputsForAgent).length,
+        hasCalculatorForm: !!(
+          rawInputJson &&
+          typeof rawInputJson === "object" &&
+          rawInputJson.calculator_form
+        ),
+        hasTransactionBreakdown: !!result?.transaction_breakdown,
+        hasPlanComparison: !!result?.plan_comparison,
+      });
+
       // 2. Call Summary Agent (App 4) via internal Railway network
       const { data: agentResponse } = await axios.post(
-        `${process.env.SUMMARY_AGENT_URL}/generate-summary`,
+        agentUrl,
         {
           country: scenario.country_name,
           provider: scenario.provider_name,
@@ -128,6 +192,17 @@ router.post(
         },
       );
 
+      const elapsedMs = Date.now() - t0;
+      logSummary("agent_call_ok", {
+        scenarioId: id,
+        elapsedMs,
+        summaryLength:
+          typeof agentResponse?.summary === "string"
+            ? agentResponse.summary.length
+            : null,
+        usage: agentResponse?.usage ?? null,
+      });
+
       const summary = agentResponse.summary;
 
       // 3. Persist the summary
@@ -135,6 +210,7 @@ router.post(
         summary,
         id,
       ]);
+      logSummary("db_updated_ai_summary", { scenarioId: id });
 
       // 4. Log AI usage
       await logAIUsage({
@@ -147,12 +223,29 @@ router.post(
         estimatedCost: agentResponse.usage?.estimated_cost || null,
       });
 
+      logSummary("response_ok", { scenarioId: id });
       res.json({ summary });
     } catch (err) {
       if (err.response) {
+        logSummary("agent_http_error", {
+          scenarioId: id,
+          status: err.response.status,
+          statusText: err.response.statusText,
+          data:
+            typeof err.response.data === "object"
+              ? err.response.data
+              : String(err.response.data).slice(0, 500),
+        });
         return res.status(err.response.status).json(err.response.data);
       }
-      console.error(err);
+      const code = err.code || null;
+      logSummary("error", {
+        scenarioId: id,
+        message: err.message,
+        code,
+        isAxiosError: err.isAxiosError === true,
+      });
+      console.error("[ai-summary] stack", err);
       res.status(500).json({ error: "Failed to generate summary." });
     }
   },
