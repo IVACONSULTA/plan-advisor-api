@@ -111,14 +111,16 @@ router.post(
       });
     }
     const agentApiKey = String(
-      process.env.AGENT_API_KEY || process.env.SUMMARY_AGENT_API_KEY || "",
+      process.env.SUMMARY_AGENT_API_KEY ||
+        process.env.AGENT_API_KEY ||
+        "",
     ).trim();
     if (!agentApiKey) {
       logSummary("503 summary_agent_misconfigured", { scenarioId: id });
       return res.status(503).json({
         error: "summary_agent_misconfigured",
         message:
-          "AGENT_API_KEY is not set (or use legacy SUMMARY_AGENT_API_KEY). Must match the summary service X-API-Key. See .env.example.",
+          "Set SUMMARY_AGENT_API_KEY or AGENT_API_KEY to the same secret the summary agent validates on X-API-Key. SUMMARY_AGENT_API_KEY wins when both are set. See .env.example.",
       });
     }
 
@@ -277,16 +279,31 @@ router.post(
       res.json({ summary });
     } catch (err) {
       if (err.response) {
+        const status = err.response.status;
+        const data = err.response.data;
+        const keyHint =
+          "Plan API env SUMMARY_AGENT_API_KEY (preferred) or AGENT_API_KEY must be the exact same string the summary agent checks against X-API-Key. Copy from the agent service env in Railway (no quotes, no trailing spaces). If both env vars are set on Plan API, SUMMARY_AGENT_API_KEY is used for this route.";
         logSummary("agent_http_error", {
           scenarioId: id,
-          status: err.response.status,
+          status,
           statusText: err.response.statusText,
           data:
-            typeof err.response.data === "object"
-              ? err.response.data
-              : String(err.response.data).slice(0, 500),
+            typeof data === "object"
+              ? data
+              : String(data).slice(0, 500),
+          summaryAgentKeyLength: agentApiKey.length,
+          usesSummarySpecificKey: !!String(
+            process.env.SUMMARY_AGENT_API_KEY || "",
+          ).trim(),
         });
-        return res.status(err.response.status).json(err.response.data);
+        if (status === 401) {
+          const merged =
+            typeof data === "object" && data !== null && !Array.isArray(data)
+              ? { ...data, hint: keyHint }
+              : { detail: data, hint: keyHint };
+          return res.status(401).json(merged);
+        }
+        return res.status(status).json(data);
       }
       const netCode = err.isAxiosError ? axiosNetworkCode(err) : null;
       const unreachableCodes = new Set([
