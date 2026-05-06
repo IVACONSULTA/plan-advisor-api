@@ -39,6 +39,56 @@ function volumeMapFromScenarioInputJson(inputJson) {
   return inputJson;
 }
 
+/** Axios often puts syscall errors on `err.cause` (Node 18+). */
+function axiosNetworkCode(err) {
+  if (!err || typeof err !== "object") return null;
+  const c = err.cause;
+  if (c && typeof c === "object" && typeof c.code === "string") return c.code;
+  if (typeof err.code === "string") return err.code;
+  const msg = String(err.message || "");
+  if (msg.includes("ENOTFOUND")) return "ENOTFOUND";
+  if (msg.includes("ECONNREFUSED")) return "ECONNREFUSED";
+  if (msg.includes("ETIMEDOUT")) return "ETIMEDOUT";
+  return null;
+}
+
+/** JSON for client + logs when the summary agent cannot be reached (DNS, TCP, timeout). */
+function summaryAgentNetworkPayload(err, reqUrl) {
+  const code = axiosNetworkCode(err);
+  let hostname = "";
+  try {
+    if (reqUrl) hostname = new URL(reqUrl).hostname;
+  } catch {
+    /* ignore */
+  }
+  const internalRailway = hostname.endsWith(".railway.internal");
+  let hint =
+    "Verify SUMMARY_AGENT_URL and that the summary agent is running.";
+
+  if (code === "ENOTFOUND" && internalRailway) {
+    hint =
+      "Hostnames ending in .railway.internal only resolve inside Railway's private network. " +
+      "If this API runs outside Railway (e.g. on your laptop), set SUMMARY_AGENT_URL to the agent's public HTTPS URL. " +
+      "If the API is on Railway, confirm the private hostname matches your summary service in the Railway dashboard.";
+  } else if (code === "ENOTFOUND") {
+    hint =
+      "DNS lookup failed — check the hostname in SUMMARY_AGENT_URL and your network.";
+  } else if (code === "ECONNREFUSED") {
+    hint =
+      "Connection refused — wrong port, or the summary agent process is not listening.";
+  } else if (code === "ETIMEDOUT" || code === "ECONNABORTED") {
+    hint =
+      "Request timed out — agent may be cold, overloaded, or blocked between networks.";
+  }
+
+  return {
+    error: "summary_agent_unreachable",
+    message: "Could not reach the summary agent.",
+    code,
+    hint,
+  };
+}
+
 /**
  * POST /api/scenarios/:id/generate-summary
  * Admin / Internal / Client (if enabled) — call the Summary Agent (App 4).
@@ -237,6 +287,20 @@ router.post(
               : String(err.response.data).slice(0, 500),
         });
         return res.status(err.response.status).json(err.response.data);
+      }
+      const netCode = err.isAxiosError ? axiosNetworkCode(err) : null;
+      const unreachableCodes = new Set([
+        "ENOTFOUND",
+        "ECONNREFUSED",
+        "ETIMEDOUT",
+        "ECONNABORTED",
+        "EAI_AGAIN",
+      ]);
+      if (err.isAxiosError && netCode && unreachableCodes.has(netCode)) {
+        const body = summaryAgentNetworkPayload(err, err.config?.url);
+        logSummary("agent_network_error", { scenarioId: id, ...body });
+        console.error("[ai-summary] stack", err);
+        return res.status(503).json(body);
       }
       const code = err.code || null;
       logSummary("error", {
