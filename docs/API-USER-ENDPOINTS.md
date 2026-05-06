@@ -136,6 +136,9 @@ Or use **`POST /api/admin/users`** with another user’s **admin** JWT once that
 | `GET` | `/api/scenarios` | X-API-Key + Bearer | admin, internal, client |
 | `GET` | `/api/scenarios/:id` | X-API-Key + Bearer | admin, internal, client |
 | `POST` | `/api/scenarios/:id/generate-summary` | X-API-Key + Bearer | admin, internal, client* |
+| `GET` | `/api/admin/dashboard` | X-API-Key + Bearer | **admin** |
+| `GET` | `/api/admin/document-analyses` | X-API-Key + Bearer | **admin** |
+| `GET` | `/api/admin/document-analyses/:id` | X-API-Key + Bearer | **admin** |
 | `POST` | `/api/admin/countries` | X-API-Key + Bearer | **admin** |
 | `POST` | `/api/admin/providers` | X-API-Key + Bearer | **admin** |
 | `GET` | `/api/admin/users` | X-API-Key + Bearer | **admin** |
@@ -242,6 +245,43 @@ Returns `users_profile` + company fields and `client_summary_enabled` (placehold
 - Authorization: Bearer `{{access_token}}`
 
 Returns `active_profiles`, `recent_scenarios`, `scenario_stats`, and `ai_calls_this_month` (internal/admin only for the last).
+
+---
+
+## Admin workspace (dashboard & fixtures)
+
+### `GET /api/admin/dashboard`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/admin/dashboard`
+- Headers: `X-API-Key`, `Authorization: Bearer {{access_token}}`
+- Role: **admin** only
+
+**Response:** `success`, KPI counts (`kpis`), live `profiles`, `recent_documents`, `recent_scenarios` from PostgreSQL, plus `document_analyses` ( **`mock: true`** until the Documents Agent is fully integrated).
+
+---
+
+### `GET /api/admin/document-analyses`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/admin/document-analyses`
+
+Returns `{ "success": true, "mock": true, "items": [ … ] }` for list views (fixture data).
+
+---
+
+### `GET /api/admin/document-analyses/:id`
+
+**Postman**
+
+- Method: `GET`
+- URL: `{{base_url}}/api/admin/document-analyses/{{analysis_id}}`
+
+Returns `{ "success": true, "mock": true, "data": { … } }` for detail views. When `id` matches a fixture row, country/provider metadata is aligned with that row.
 
 ---
 
@@ -465,6 +505,8 @@ AI quota and rate limits may return **`429`**.
 - Method: `GET`
 - URL: `{{base_url}}/api/admin/users`
 - Authorization: Bearer `{{access_token}}`
+
+Each row includes **`ai_calls_this_month`** (count from `ai_usage_logs` since the start of the current UTC month).
 
 ---
 
