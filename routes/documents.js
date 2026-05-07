@@ -25,6 +25,21 @@ const upload = multer({
   },
 });
 
+/** Multer passes synchronous errors via callback — normalize for Express */
+function uploadSingle(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err) {
+      return res.status(400).json({
+        error: typeof err.message === 'string' ? err.message : 'Upload rejected.',
+      });
+    }
+    next();
+  });
+}
+
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
@@ -85,7 +100,7 @@ router.post(
   '/documents/upload',
   requireAuth,
   requireAdmin,
-  upload.single('file'),
+  uploadSingle,
   async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded.' });
@@ -93,9 +108,9 @@ router.post(
 
     const { country_id, provider_id, profile_id, document_type, description } = req.body;
 
-    if (!country_id || !provider_id || !document_type) {
+    if (!country_id || !provider_id || !profile_id || !document_type) {
       return res.status(400).json({
-        error: 'country_id, provider_id, and document_type are required.',
+        error: 'country_id, provider_id, profile_id, and document_type are required.',
       });
     }
 
@@ -106,9 +121,21 @@ router.post(
     }
 
     try {
-      // Use profile_id as the folder name; fall back to country_id
-      const folderKey = profile_id || country_id;
-      const storagePath = saveDocument(folderKey, req.file.originalname, req.file.buffer);
+      const { rows: profRows } = await db.query(
+        `SELECT id FROM calculation_profiles
+         WHERE id = $1 AND country_id = $2 AND provider_id = $3`,
+        [profile_id, country_id, provider_id]
+      );
+      if (!profRows.length) {
+        return res.status(400).json({
+          error:
+            'No calculation_profiles row matches profile_id, country_id, and provider_id.',
+        });
+      }
+
+      // Folder / object key prefix — ties stored bytes to this profile in bucket or volume
+      const folderKey = profile_id;
+      const storagePath = await saveDocument(folderKey, req.file.originalname, req.file.buffer);
 
       const { rows } = await db.query(
         `INSERT INTO documents
@@ -116,9 +143,16 @@ router.post(
             document_type, description, copyright_status, uploaded_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
          RETURNING id, filename, document_type, copyright_status, created_at`,
-        [country_id, provider_id, profile_id || null,
-         req.file.originalname, storagePath,
-         document_type, description || null, req.user.id]
+        [
+          country_id,
+          provider_id,
+          profile_id,
+          req.file.originalname,
+          storagePath,
+          document_type,
+          description || null,
+          req.user.id,
+        ]
       );
 
       res.status(201).json(rows[0]);
@@ -202,7 +236,7 @@ router.post(
       const { readDocument } = require('../lib/storage');
       const documentsWithText = await Promise.all(
         docs.map(async (doc) => {
-          const buffer = readDocument(doc.storage_path);
+          const buffer = await readDocument(doc.storage_path);
           const text   = await extractText(buffer, doc.filename);
           return {
             filename:         doc.filename,

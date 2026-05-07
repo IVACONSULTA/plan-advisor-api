@@ -49,7 +49,7 @@ flowchart LR
 - **Identity:** **Supabase Auth** validates **Bearer** JWTs only. Roles and company linkage are read from **`users_profile`** in PostgreSQL (`id` must match Supabase `auth.users.id`). There is no application database on Supabase for this API.
 - **Security middleware:** Helmet, CORS (`FRONTEND_URL` or `*`), global rate limiting, then **`X-API-Key`** when `PA_PLAN_API_KEY` is set (required in production). **`GET /live`** and **`GET /health`** skip the API key; **`OPTIONS`** is allowed for CORS preflight.
 - **Health:** **`/live`** is a fast liveness probe (no DB). **`/health`** returns HTTP 200 with a JSON `db` field (`connected` vs `unreachable`) after probing PostgreSQL.
-- **Documents:** Uploads and derived files use **`DOCUMENTS_PATH`** on disk (Railway volume in production when configured).
+- **Documents:** Uploads go to **`DOCUMENTS_PATH`** on disk (Railway volume) **or** to an **S3-compatible bucket** when `STORAGE_DRIVER=s3` or `S3_BUCKET` / `AWS_S3_BUCKET` is set (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `S3_ENDPOINT`, `S3_FORCE_PATH_STYLE=true` for MinIO-style endpoints). The **`documents`** row stores `storage_path` (absolute path or `s3:{profileId}/{filename}`); **`uploaded_by`** references **`users_profile`**. **`document_analyses`** and **`plans`** / **`transaction_rules`** link back via `document_ids[]` and **`source_document_id`** after AI analysis.
 - **Optional AI:** If **`DOC_AGENT_URL`** / **`SUMMARY_AGENT_URL`** (and **`AGENT_API_KEY`** for server-to-server calls) are set, document and summary routes can call those services.
 
 Further detail: internal guide in `docs/PA-PLAN-ADVISOR-GUIDE.md`, user-facing API notes in `docs/API-USER-ENDPOINTS.md`, deployment in `docs/RAILWAY-DEPLOYMENT-GUIDE.md`.
