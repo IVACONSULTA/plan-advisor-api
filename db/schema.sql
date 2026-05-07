@@ -185,6 +185,26 @@ CREATE TABLE IF NOT EXISTS ai_usage_logs (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ─── 7.9b document_staging ────────────────────────────────────────────────────
+-- Wizard step 2–3: files before a calculation_profiles row exists or before activation.
+-- Promoted into `documents` on POST /profiles/:id/activate when promote_profile_slug is sent.
+CREATE TABLE IF NOT EXISTS document_staging (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_slug     TEXT NOT NULL,
+  filename         TEXT NOT NULL,
+  storage_path     TEXT NOT NULL,
+  document_type    TEXT NOT NULL
+                     CHECK (document_type IN (
+                       'provider_pricing','transaction_guide','country_legal',
+                       'contract','commercial_confirmation','other'
+                     )),
+  description      TEXT,
+  copyright_status TEXT NOT NULL DEFAULT 'pending'
+                     CHECK (copyright_status IN ('pending','clear','restricted','blocked')),
+  uploaded_by      UUID NOT NULL REFERENCES users_profile(id),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ─── 7.13 audit_logs ────────────────────────────────────────────────────────
 -- Immutable. No UPDATE or DELETE should ever run against this table.
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -211,3 +231,4 @@ CREATE INDEX IF NOT EXISTS idx_documents_profile          ON documents(profile_i
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity          ON audit_logs(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_calc_profiles_status       ON calculation_profiles(status);
 CREATE INDEX IF NOT EXISTS idx_calc_profiles_country_prov ON calculation_profiles(country_id, provider_id);
+CREATE INDEX IF NOT EXISTS idx_document_staging_slug      ON document_staging(profile_slug);

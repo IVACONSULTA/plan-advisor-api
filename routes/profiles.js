@@ -188,7 +188,34 @@ router.post('/profiles/:id/activate', requireAuth, requireAdmin, async (req, res
       afterJson:  { status: 'active' },
     });
 
-    res.json(rows[0]);
+    const promoteSlugRaw =
+      typeof req.body?.promote_profile_slug === 'string'
+        ? req.body.promote_profile_slug.trim()
+        : '';
+
+    let promoted_documents = [];
+    if (promoteSlugRaw) {
+      try {
+        const { promoteStagingToProfile } = require('../lib/document-staging');
+        promoted_documents = await promoteStagingToProfile(
+          promoteSlugRaw,
+          rows[0].country_id,
+          rows[0].provider_id,
+          id,
+          req.user.id
+        );
+      } catch (promoteErr) {
+        console.error('promoteStagingToProfile:', promoteErr);
+        return res.status(500).json({
+          error:
+            'Profile was activated but staged documents could not be promoted to live storage. Use POST /api/admin/documents/promote-staging or fix the error.',
+          detail: String(promoteErr.message || promoteErr),
+          profile: rows[0],
+        });
+      }
+    }
+
+    res.json({ ...rows[0], promoted_documents });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to activate profile.' });
