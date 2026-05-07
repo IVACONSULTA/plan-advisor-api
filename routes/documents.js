@@ -155,8 +155,10 @@ router.post(
         ]
       );
 
+      paUploadApiDebug('stored document row', { id: rows[0]?.id, filename: rows[0]?.filename });
       res.status(201).json(rows[0]);
     } catch (err) {
+      paUploadApiDebug('upload handler threw', err?.message || err);
       console.error(err);
       res.status(500).json({ error: 'Failed to upload document.' });
     }
