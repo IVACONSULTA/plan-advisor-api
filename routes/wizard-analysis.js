@@ -74,7 +74,7 @@ router.post(
       let document_ids = [];
       let promoted_documents = [];
 
-      if (stagingCount.rows[0].n > 0) {
+      if (stagingCount[0]?.n > 0) {
         promoted_documents = await promoteStagingToProfile(
           profile_slug,
           country_id,
