@@ -2,16 +2,13 @@ const express  = require('express');
 const router   = express.Router();
 const multer   = require('multer');
 const path     = require('path');
-const axios    = require('axios');
-const pdfParse = require('pdf-parse');
-const mammoth  = require('mammoth');
-const ExcelJS  = require('exceljs');
 const rateLimit = require('express-rate-limit');
 
 const db              = require('../lib/db');
 const { saveDocument } = require('../lib/storage');
 const { requireAuth, requireAdmin } = require('../lib/supabase');
-const { checkAIQuota, logAIUsage }  = require('../lib/quota');
+const { checkAIQuota }  = require('../lib/quota');
+const { runDocumentAnalysis } = require('../lib/run-document-analysis');
 const {
   safeStagingSlug,
   stagingFolderKey,
@@ -68,39 +65,6 @@ const VALID_DOC_TYPES = [
   'commercial_confirmation',
   'other',
 ];
-
-/**
- * Extract plain text from a buffer depending on file extension.
- */
-async function extractText(buffer, filename) {
-  const ext = path.extname(filename).toLowerCase();
-
-  if (ext === '.pdf') {
-    const data = await pdfParse(buffer);
-    return data.text;
-  }
-
-  if (ext === '.docx') {
-    const result = await mammoth.extractRawText({ buffer });
-    return result.value;
-  }
-
-  if (ext === '.xlsx') {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
-    const lines = [];
-    workbook.eachSheet((sheet) => {
-      sheet.eachRow((row) => {
-        const cells = row.values.filter(Boolean).join('\t');
-        if (cells) lines.push(cells);
-      });
-    });
-    return lines.join('\n');
-  }
-
-  // .csv, .txt, .md — plain text
-  return buffer.toString('utf8');
-}
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
@@ -341,159 +305,17 @@ router.post(
     }
 
     try {
-      // Fetch document metadata + storage paths
-      const { rows: docs } = await db.query(
-        `SELECT d.*, cp.country_id, cp.provider_id,
-                co.name AS country_name, pr.name AS provider_name
-         FROM documents d
-         JOIN calculation_profiles cp ON cp.id = d.profile_id
-         JOIN countries  co ON co.id = cp.country_id
-         JOIN providers  pr ON pr.id = cp.provider_id
-         WHERE d.id = ANY($1::uuid[]) AND d.profile_id = $2`,
-        [document_ids, profile_id]
-      );
-
-      if (!docs.length) {
-        return res.status(404).json({ error: 'No documents found for the given IDs.' });
-      }
-
-      // Extract text from each document
-      const { readDocument } = require('../lib/storage');
-      const documentsWithText = await Promise.all(
-        docs.map(async (doc) => {
-          const buffer = await readDocument(doc.storage_path);
-          const text   = await extractText(buffer, doc.filename);
-          return {
-            filename:         doc.filename,
-            text:             text.slice(0, parseInt(process.env.MAX_CHARS_PER_DOC || '20000', 10)),
-            source_url:       null,
-            declared_license: null,
-          };
-        })
-      );
-
-      // Fetch existing rules and plans for the profile (for context)
-      const [existingRules, existingPlans] = await Promise.all([
-        db.query(`SELECT * FROM transaction_rules WHERE profile_id = $1`, [profile_id]),
-        db.query(`SELECT * FROM plans WHERE profile_id = $1`, [profile_id]),
-      ]);
-
-      const countryName   = docs[0].country_name;
-      const providerName  = docs[0].provider_name;
-
-      // Call DocIA agent (App 3) via internal Railway network
-      let agentResponse;
-      try {
-        const { data } = await axios.post(
-          `${process.env.DOC_AGENT_URL}/analyze`,
-          {
-            country:        countryName,
-            provider:       providerName,
-            documents:      documentsWithText,
-            existing_rules: existingRules.rows,
-            existing_plans: existingPlans.rows,
-          },
-          {
-            headers: { 'X-API-Key': process.env.AGENT_API_KEY },
-            timeout: 120_000, // 2 minutes
-          }
-        );
-        agentResponse = data;
-      } catch (agentErr) {
-        // Pass through 451 (copyright block) from the agent
-        if (agentErr.response?.status === 451) {
-          // Update copyright status for blocked documents
-          await db.query(
-            `UPDATE documents SET copyright_status = 'blocked', copyright_reason = $1
-             WHERE id = ANY($2::uuid[])`,
-            [agentErr.response.data.reason, document_ids]
-          );
-          return res.status(451).json(agentErr.response.data);
-        }
-        throw agentErr;
-      }
-
-      // Persist the analysis result
-      const { rows: analysis } = await db.query(
-        `INSERT INTO document_analyses
-           (profile_id, document_ids, analysis_json, summary, status, guardrail_audit, created_by)
-         VALUES ($1, $2, $3, $4, 'completed', $5, $6)
-         RETURNING id, status, created_at`,
-        [
-          profile_id,
-          document_ids,
-          JSON.stringify(agentResponse),
-          agentResponse.summary || null,
-          JSON.stringify(agentResponse.guardrail_audit || {}),
-          req.user.id,
-        ]
-      );
-
-      const analysisId = analysis[0].id;
-
-      // Persist proposed transaction rules
-      if (agentResponse.rules?.length) {
-        for (const rule of agentResponse.rules) {
-          await db.query(
-            `INSERT INTO transaction_rules
-               (profile_id, input_key, label, direction, obligation, operation_group,
-                pa_transactions_per_item, reason, source_excerpt, confidence, status,
-                ai_proposed_value)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'proposed',$11)
-             ON CONFLICT DO NOTHING`,
-            [
-              profile_id,
-              rule.input_key, rule.label, rule.direction, rule.obligation,
-              rule.operation_group, rule.pa_transactions_per_item, rule.reason,
-              rule.source_excerpt || null, rule.confidence || 'medium',
-              JSON.stringify({ pa_transactions_per_item: rule.pa_transactions_per_item }),
-            ]
-          );
-        }
-      }
-
-      // Persist proposed plans
-      if (agentResponse.plans?.length) {
-        for (const plan of agentResponse.plans) {
-          await db.query(
-            `INSERT INTO plans
-               (profile_id, plan_name, included_pa_transactions, annual_fee,
-                monthly_fee, extra_transaction_cost, status,
-                source_excerpt, confidence)
-             VALUES ($1,$2,$3,$4,$5,$6,'proposed',$7,$8)
-             ON CONFLICT DO NOTHING`,
-            [
-              profile_id,
-              plan.plan_name, plan.included_pa_transactions, plan.annual_fee,
-              plan.monthly_fee || null, plan.extra_transaction_cost,
-              plan.source_excerpt || null, plan.confidence || 'medium',
-            ]
-          );
-        }
-      }
-
-      // Update copyright status for processed documents
-      await db.query(
-        `UPDATE documents SET copyright_status = 'clear'
-         WHERE id = ANY($1::uuid[])
-           AND copyright_status = 'pending'`,
-        [document_ids]
-      );
-
-      // Log AI usage
-      await logAIUsage({
-        userId:      req.user.id,
-        action:      'document_analysis',
-        model:       'crewai',
-        processingId: agentResponse.guardrail_audit?.processing_id || null,
+      const outcome = await runDocumentAnalysis({
+        userId: req.user.id,
+        profile_id,
+        document_ids,
       });
 
-      res.status(201).json({
-        analysis_id: analysisId,
-        rules_proposed: agentResponse.rules?.length || 0,
-        plans_proposed: agentResponse.plans?.length || 0,
-        guardrail_audit: agentResponse.guardrail_audit,
-      });
+      if (outcome.kind === 'copyright_blocked') {
+        return res.status(451).json(outcome.body);
+      }
+
+      res.status(201).json(outcome.payload);
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Document analysis failed.' });

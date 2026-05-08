@@ -76,6 +76,7 @@ app.use('/api/admin',      require('./routes/admin-dashboard'));
 app.use('/api/admin',      require('./routes/admin-document-analyses'));
 app.use('/api/admin',      require('./routes/profiles'));
 app.use('/api/admin',      require('./routes/documents'));
+app.use('/api/admin',      require('./routes/wizard-analysis'));
 app.use('/api/admin',      require('./routes/rules'));
 app.use('/api/admin',      require('./routes/plans'));
 app.use('/api/calculator', require('./routes/calculator'));
