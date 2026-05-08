@@ -7,8 +7,8 @@ const { calculatorRuleGroupsCountSelect } = require('../lib/calculator-rules-cou
 
 /**
  * POST /api/admin/profiles
- * Admin only — create a new calculation profile in 'draft' status.
- * Accepts either UUIDs or code/name (auto-creates country/provider if needed).
+ * Admin only — find or create a calculation profile in 'draft' status.
+ * Returns existing profile if country+provider match found, otherwise creates new.
  * 
  * Body: 
  *   { country_id, provider_id, version, currency, ... }  (existing UUIDs)
@@ -70,6 +70,25 @@ router.post('/profiles', requireAuth, requireAdmin, async (req, res) => {
       });
     }
 
+    // Check if profile already exists for this country+provider
+    const { rows: existingProfiles } = await db.query(
+      `SELECT * FROM calculation_profiles
+       WHERE country_id = $1 AND provider_id = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [resolvedCountryId, resolvedProviderId]
+    );
+
+    if (existingProfiles.length > 0) {
+      // Return existing profile
+      return res.status(200).json({
+        ...existingProfiles[0],
+        reused: true,
+        message: 'Existing profile found for this country/provider combination.',
+      });
+    }
+
+    // Create new profile
     const { rows } = await db.query(
       `INSERT INTO calculation_profiles
          (country_id, provider_id, version, currency, calculation_basis, status, created_by)
@@ -78,7 +97,7 @@ router.post('/profiles', requireAuth, requireAdmin, async (req, res) => {
       [resolvedCountryId, resolvedProviderId, version, currency,
        calculation_basis || 'PA transactions', req.user.id]
     );
-    res.status(201).json(rows[0]);
+    res.status(201).json({ ...rows[0], reused: false });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create profile.' });
