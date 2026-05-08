@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS countries (
 -- ─── 7.4 providers ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS providers (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name       TEXT NOT NULL,
+  name       TEXT NOT NULL UNIQUE,  -- Provider name must be unique for ON CONFLICT
   type       TEXT NOT NULL,  -- 'PA' | 'PDP'
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
