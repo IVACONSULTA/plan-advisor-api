@@ -8,23 +8,74 @@ const { calculatorRuleGroupsCountSelect } = require('../lib/calculator-rules-cou
 /**
  * POST /api/admin/profiles
  * Admin only — create a new calculation profile in 'draft' status.
+ * Accepts either UUIDs or code/name (auto-creates country/provider if needed).
+ * 
+ * Body: 
+ *   { country_id, provider_id, version, currency, ... }  (existing UUIDs)
+ * OR
+ *   { country_code, country_name, provider_name, provider_type, version, currency, ... }  (wizard)
  */
 router.post('/profiles', requireAuth, requireAdmin, async (req, res) => {
-  const { country_id, provider_id, version, currency, calculation_basis, notes } = req.body;
+  const { 
+    country_id, 
+    provider_id, 
+    country_code, 
+    country_name,
+    provider_name,
+    provider_type,
+    version, 
+    currency, 
+    calculation_basis, 
+    notes 
+  } = req.body;
 
-  if (!country_id || !provider_id || !version || !currency) {
+  if (!version || !currency) {
     return res.status(400).json({
-      error: 'country_id, provider_id, version, and currency are required.',
+      error: 'version and currency are required.',
     });
   }
 
   try {
+    let resolvedCountryId = country_id;
+    let resolvedProviderId = provider_id;
+
+    // Auto-create country if code/name provided
+    if (!resolvedCountryId && country_code && country_name) {
+      const { rows: countryRows } = await db.query(
+        `INSERT INTO countries (code, name, created_by, created_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+        [country_code.toUpperCase(), country_name.trim(), req.user.id]
+      );
+      resolvedCountryId = countryRows[0].id;
+    }
+
+    // Auto-create provider if name provided
+    if (!resolvedProviderId && provider_name) {
+      const provType = provider_type || 'PA';
+      const { rows: providerRows } = await db.query(
+        `INSERT INTO providers (name, type, created_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (name) DO UPDATE SET type = EXCLUDED.type
+         RETURNING id`,
+        [provider_name.trim(), provType]
+      );
+      resolvedProviderId = providerRows[0].id;
+    }
+
+    if (!resolvedCountryId || !resolvedProviderId) {
+      return res.status(400).json({
+        error: 'Must provide either (country_id, provider_id) or (country_code, country_name, provider_name).',
+      });
+    }
+
     const { rows } = await db.query(
       `INSERT INTO calculation_profiles
          (country_id, provider_id, version, currency, calculation_basis, status, created_by)
        VALUES ($1, $2, $3, $4, $5, 'draft', $6)
        RETURNING *`,
-      [country_id, provider_id, version, currency,
+      [resolvedCountryId, resolvedProviderId, version, currency,
        calculation_basis || 'PA transactions', req.user.id]
     );
     res.status(201).json(rows[0]);
