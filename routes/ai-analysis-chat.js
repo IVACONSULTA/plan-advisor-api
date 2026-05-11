@@ -3,8 +3,6 @@ const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 
 const db = require('../lib/db');
-const { readDocument } = require('../lib/storage');
-const { extractText } = require('../lib/document-text-extract');
 const { requireAuth, requireAdmin } = require('../lib/supabase');
 const { safeStagingSlug } = require('../lib/document-staging');
 
@@ -113,49 +111,34 @@ router.post(
         });
       }
 
-      // Extract text from each document
-      const maxChars = parseInt(process.env.MAX_CHARS_PER_DOC || '20000', 10);
-      const documentsWithText = [];
+      // Collect storage paths — AgenteDocumental reads files directly from the shared volume
+      const storagePaths = documents.map((d) => d.storage_path);
 
-      for (const doc of documents) {
-        try {
-          const buffer = await readDocument(doc.storage_path);
-          const text = await extractText(buffer, doc.filename);
-          documentsWithText.push({
-            filename: doc.filename,
-            text: text.slice(0, maxChars),
-          });
-        } catch (readErr) {
-          console.warn(`[ai-analysis/chat] Could not read ${doc.filename}:`, readErr.message);
-        }
-      }
-
-      if (!documentsWithText.length) {
-        return res.status(400).json({
-          error: 'No readable documents',
-          message: 'None of the uploaded documents could be read/extracted.',
-        });
-      }
+      // Derive a common allowed root from the storage paths
+      // (e.g. /data/documents/<profile-id> or /data/documents/draft-...)
+      const DOCS_PATH = (process.env.DOCUMENTS_PATH || '/data/documents').replace(/\/$/, '');
+      const allowedRoots = [DOCS_PATH];
 
       console.log(
-        `[ai-analysis/chat] Sending ${documentsWithText.length} documents to agent at ${agentUrl}`
+        `[ai-analysis/chat] Sending ${storagePaths.length} paths to agent at ${agentUrl}`
       );
 
-      // Call AgenteDocumental
+      // Call AgenteDocumental with document_paths (not pre-extracted text)
       const { data: agentData } = await axios.post(
         `${agentUrl}/analyze`,
         {
           message,
-          country: countryName,
-          provider: providerName,
-          documents: documentsWithText,
+          document_paths: storagePaths,
+          allowed_roots: allowedRoots,
+          country_name: countryName,
+          provider_name: providerName,
           profile_id: profileId,
         },
         {
           headers: process.env.AGENT_API_KEY
             ? { 'X-API-Key': process.env.AGENT_API_KEY }
             : {},
-          timeout: 120_000,
+          timeout: 180_000,
         }
       );
 
@@ -190,7 +173,7 @@ router.post(
         assistant,
         rules,
         raw_output: rawOutput,
-        documents_used: documentsWithText.map((d) => d.filename),
+        documents_used: documents.map((d) => d.filename),
       });
     } catch (err) {
       if (err.response?.status) {
