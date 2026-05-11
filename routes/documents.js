@@ -8,6 +8,7 @@ const db              = require('../lib/db');
 const { saveDocument } = require('../lib/storage');
 const { requireAuth, requireAdmin } = require('../lib/supabase');
 const { checkAIQuota }  = require('../lib/quota');
+const { logAudit } = require('../lib/audit');
 const { runDocumentAnalysis } = require('../lib/run-document-analysis');
 const {
   safeStagingSlug,
@@ -390,5 +391,53 @@ router.post(
     }
   }
 );
+
+/**
+ * DELETE /api/admin/documents/:id
+ * Admin only — delete a document and its file from storage.
+ */
+router.delete('/documents/:id', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { rows: docRows } = await db.query(
+      `SELECT id, filename, storage_path FROM documents WHERE id = $1`,
+      [id]
+    );
+
+    if (!docRows.length) {
+      return res.status(404).json({ error: 'Document not found.' });
+    }
+
+    const document = docRows[0];
+
+    // Delete file from storage
+    const { deleteDocument } = require('../lib/storage');
+    try {
+      await deleteDocument(document.storage_path);
+      console.log(`[DELETE document] Deleted file: ${document.storage_path}`);
+    } catch (delErr) {
+      console.warn(`[DELETE document] Could not delete file ${document.storage_path}:`, delErr);
+      // Continue with database deletion even if file deletion fails
+    }
+
+    // Delete database record
+    await db.query('DELETE FROM documents WHERE id = $1', [id]);
+
+    await logAudit({
+      userId: req.user.id,
+      action: 'delete_document',
+      entityType: 'document',
+      entityId: id,
+      beforeJson: document,
+      afterJson: null,
+    });
+
+    res.json({ success: true, deleted_document_id: id, filename: document.filename });
+  } catch (err) {
+    console.error('[DELETE /documents/:id]', err);
+    res.status(500).json({ error: 'Failed to delete document.' });
+  }
+});
 
 module.exports = router;
