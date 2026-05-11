@@ -66,8 +66,8 @@ CREATE TABLE IF NOT EXISTS calculation_profiles (
 -- ─── 7.9 documents ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS documents (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  country_id       UUID NOT NULL REFERENCES countries(id),
-  provider_id      UUID NOT NULL REFERENCES providers(id),
+  country_id       UUID REFERENCES countries(id),       -- nullable during wizard drafts
+  provider_id      UUID REFERENCES providers(id),       -- nullable during wizard drafts
   profile_id       UUID REFERENCES calculation_profiles(id),
   filename         TEXT NOT NULL,
   storage_path     TEXT NOT NULL,  -- NEVER exposed in API responses

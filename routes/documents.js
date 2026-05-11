@@ -184,14 +184,24 @@ router.post(
     }
 
     try {
-      // If we have profile_id, verify it exists
+      let resolvedCountryId = country_id || null;
+      let resolvedProviderId = provider_id || null;
+
+      // If we have profile_id, verify it exists and fetch country/provider IDs if missing
       if (profile_id) {
         const { rows: profRows } = await db.query(
-          `SELECT id FROM calculation_profiles WHERE id = $1`,
+          `SELECT id, country_id, provider_id FROM calculation_profiles WHERE id = $1`,
           [profile_id]
         );
         if (!profRows.length) {
           return res.status(404).json({ error: 'calculation_profiles row not found.' });
+        }
+        // Use country/provider from profile if not provided
+        if (!resolvedCountryId && profRows[0].country_id) {
+          resolvedCountryId = profRows[0].country_id;
+        }
+        if (!resolvedProviderId && profRows[0].provider_id) {
+          resolvedProviderId = profRows[0].provider_id;
         }
       }
 
@@ -212,8 +222,8 @@ router.post(
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
          RETURNING id, filename, document_type, copyright_status, created_at`,
         [
-          country_id || null,
-          provider_id || null,
+          resolvedCountryId,
+          resolvedProviderId,
           profile_id || null,
           uniqueFilename,
           storagePath,
