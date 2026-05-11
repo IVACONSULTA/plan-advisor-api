@@ -292,4 +292,69 @@ router.post('/profiles/:id/activate', requireAuth, requireAdmin, async (req, res
   }
 });
 
+/**
+ * DELETE /api/admin/profiles/:id
+ * Admin only — delete a calculation profile (only if status is NOT 'active').
+ * Also deletes related documents from storage.
+ */
+router.delete('/profiles/:id', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { rows: profileRows } = await db.query(
+      `SELECT id, status, country_id, provider_id FROM calculation_profiles WHERE id = $1`,
+      [id]
+    );
+
+    if (!profileRows.length) {
+      return res.status(404).json({ error: 'Profile not found.' });
+    }
+
+    const profile = profileRows[0];
+
+    if (profile.status === 'active') {
+      return res.status(400).json({
+        error: 'Cannot delete active profile. Archive it first or change status.',
+      });
+    }
+
+    const { rows: documents } = await db.query(
+      `SELECT id, storage_path FROM documents WHERE profile_id = $1`,
+      [id]
+    );
+
+    const { deleteDocument } = require('../lib/storage');
+    for (const doc of documents) {
+      try {
+        await deleteDocument(doc.storage_path);
+      } catch (delErr) {
+        console.warn(`[DELETE profile] Could not delete document file ${doc.storage_path}:`, delErr);
+      }
+    }
+
+    await db.query('BEGIN');
+    await db.query('DELETE FROM documents WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM transaction_rules WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM calculation_assumptions WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM pricing_plans WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM calculation_profiles WHERE id = $1', [id]);
+    await db.query('COMMIT');
+
+    await logAudit({
+      userId:     req.user.id,
+      action:     'delete_profile',
+      entityType: 'calculation_profile',
+      entityId:   id,
+      beforeJson: profile,
+      afterJson:  null,
+    });
+
+    res.json({ success: true, deleted_profile_id: id });
+  } catch (err) {
+    await db.query('ROLLBACK').catch(() => {});
+    console.error('[DELETE /profiles/:id]', err);
+    res.status(500).json({ error: 'Failed to delete profile.' });
+  }
+});
+
 module.exports = router;
