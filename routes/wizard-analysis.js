@@ -66,10 +66,39 @@ router.post(
       }
 
       // Get all documents for this profile (already persisted permanently)
-      const { rows: existingDocs } = await db.query(
+      // First try by profile_id, then by storage path pattern if in draft mode
+      let { rows: existingDocs } = await db.query(
         `SELECT id FROM documents WHERE profile_id = $1 ORDER BY created_at DESC LIMIT 64`,
         [calculation_profile_id]
       );
+      
+      // If no documents found by profile_id, try by storage path (draft mode)
+      if (!existingDocs.length) {
+        const draftPattern = `draft-${safeStagingSlug(profile_slug)}%`;
+        const { rows: draftDocs } = await db.query(
+          `SELECT id FROM documents 
+           WHERE storage_path LIKE $1 
+           ORDER BY created_at DESC LIMIT 64`,
+          [`%${draftPattern}%`]
+        );
+        existingDocs = draftDocs;
+        
+        // Update these documents to link them to the profile now
+        if (draftDocs.length) {
+          await db.query(
+            `UPDATE documents 
+             SET profile_id = $1, country_id = $2, provider_id = $3
+             WHERE id = ANY($4::uuid[])`,
+            [
+              calculation_profile_id,
+              country_id,
+              provider_id,
+              draftDocs.map(d => d.id)
+            ]
+          );
+          console.log(`[wizard/run-analysis] Linked ${draftDocs.length} draft documents to profile ${calculation_profile_id}`);
+        }
+      }
       
       const document_ids = existingDocs.map((r) => r.id);
 
