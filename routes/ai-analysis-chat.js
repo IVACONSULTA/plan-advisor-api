@@ -113,41 +113,74 @@ router.post(
         });
       }
 
-      // Extract text from each document (PlanAdvisorAPI has the volume, AgenteDocumental may not)
-      const maxChars = parseInt(process.env.MAX_CHARS_PER_DOC || '20000', 10);
-      const extractedDocs = [];
+      // AGENT_SHARED_VOLUME=true  → pass file paths directly (AgenteDocumental reads via FileReadTool).
+      //                             Requires both services to mount the same Railway volume at /data.
+      // AGENT_SHARED_VOLUME unset → extract text here and send inline (works without shared volume,
+      //                             but uses more LLM context; tune MAX_CHARS_PER_DOC / MAX_CHARS_TOTAL).
+      const useSharedVolume = (process.env.AGENT_SHARED_VOLUME || '').toLowerCase() === 'true';
 
-      for (const doc of documents) {
-        try {
-          const buffer = await readDocument(doc.storage_path);
-          const text = await extractText(buffer, doc.filename);
-          extractedDocs.push({ filename: doc.filename, text: text.slice(0, maxChars) });
-          console.log(`[ai-analysis/chat] Extracted ${text.length} chars from ${doc.filename}`);
-        } catch (readErr) {
-          console.warn(`[ai-analysis/chat] Could not read ${doc.filename}:`, readErr.message);
+      let agentPayload;
+
+      if (useSharedVolume) {
+        const storagePaths = documents.map((d) => d.storage_path);
+        const DOCS_PATH = (process.env.DOCUMENTS_PATH || '/data/documents').replace(/\/$/, '');
+        console.log(`[ai-analysis/chat] Shared-volume mode — sending ${storagePaths.length} path(s) to agent`);
+        agentPayload = {
+          message,
+          document_paths: storagePaths,
+          documents: [],
+          allowed_roots: [DOCS_PATH],
+          country_name: countryName,
+          provider_name: providerName,
+          profile_id: profileId,
+        };
+      } else {
+        // Extract text here; AgenteDocumental receives inline content (no volume sharing required).
+        // MAX_CHARS_PER_DOC: per-document cap. MAX_CHARS_TOTAL: combined cap across all documents.
+        const maxCharsPerDoc = parseInt(process.env.MAX_CHARS_PER_DOC || '15000', 10);
+        const maxCharsTotal = parseInt(process.env.MAX_CHARS_TOTAL || '40000', 10);
+        const extractedDocs = [];
+        let totalChars = 0;
+
+        for (const doc of documents) {
+          if (totalChars >= maxCharsTotal) {
+            console.warn(`[ai-analysis/chat] Total char cap (${maxCharsTotal}) reached — skipping ${doc.filename}`);
+            break;
+          }
+          try {
+            const buffer = await readDocument(doc.storage_path);
+            const text = await extractText(buffer, doc.filename);
+            const remaining = maxCharsTotal - totalChars;
+            const slice = text.slice(0, Math.min(maxCharsPerDoc, remaining));
+            extractedDocs.push({ filename: doc.filename, text: slice });
+            totalChars += slice.length;
+            console.log(`[ai-analysis/chat] Extracted ${text.length} chars from ${doc.filename} (sending ${slice.length})`);
+          } catch (readErr) {
+            console.warn(`[ai-analysis/chat] Could not read ${doc.filename}:`, readErr.message);
+          }
         }
-      }
 
-      if (!extractedDocs.length) {
-        return res.status(400).json({
-          error: 'No readable documents',
-          message: 'None of the uploaded documents could be read. Please re-upload the files at step 2.',
-        });
-      }
+        if (!extractedDocs.length) {
+          return res.status(400).json({
+            error: 'No readable documents',
+            message: 'None of the uploaded documents could be read. Please re-upload the files at step 2.',
+          });
+        }
 
-      console.log(`[ai-analysis/chat] Sending ${extractedDocs.length} pre-extracted docs to agent at ${agentUrl}`);
-
-      // Send pre-extracted text to AgenteDocumental (no shared volume needed)
-      const { data: agentData } = await axios.post(
-        `${agentUrl}/analyze`,
-        {
+        console.log(`[ai-analysis/chat] Text-extraction mode — sending ${extractedDocs.length} doc(s) inline to agent`);
+        agentPayload = {
           message,
           document_paths: [],
           documents: extractedDocs,
           country_name: countryName,
           provider_name: providerName,
           profile_id: profileId,
-        },
+        };
+      }
+
+      const { data: agentData } = await axios.post(
+        `${agentUrl}/analyze`,
+        agentPayload,
         {
           headers: process.env.AGENT_API_KEY
             ? { 'X-API-Key': process.env.AGENT_API_KEY }
