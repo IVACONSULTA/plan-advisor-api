@@ -3,6 +3,8 @@ const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 
 const db = require('../lib/db');
+const { readDocument } = require('../lib/storage');
+const { extractText } = require('../lib/document-text-extract');
 const { requireAuth, requireAdmin } = require('../lib/supabase');
 const { safeStagingSlug } = require('../lib/document-staging');
 
@@ -111,25 +113,37 @@ router.post(
         });
       }
 
-      // Collect storage paths — AgenteDocumental reads files directly from the shared volume
-      const storagePaths = documents.map((d) => d.storage_path);
+      // Extract text from each document (PlanAdvisorAPI has the volume, AgenteDocumental may not)
+      const maxChars = parseInt(process.env.MAX_CHARS_PER_DOC || '20000', 10);
+      const extractedDocs = [];
 
-      // Derive a common allowed root from the storage paths
-      // (e.g. /data/documents/<profile-id> or /data/documents/draft-...)
-      const DOCS_PATH = (process.env.DOCUMENTS_PATH || '/data/documents').replace(/\/$/, '');
-      const allowedRoots = [DOCS_PATH];
+      for (const doc of documents) {
+        try {
+          const buffer = await readDocument(doc.storage_path);
+          const text = await extractText(buffer, doc.filename);
+          extractedDocs.push({ filename: doc.filename, text: text.slice(0, maxChars) });
+          console.log(`[ai-analysis/chat] Extracted ${text.length} chars from ${doc.filename}`);
+        } catch (readErr) {
+          console.warn(`[ai-analysis/chat] Could not read ${doc.filename}:`, readErr.message);
+        }
+      }
 
-      console.log(
-        `[ai-analysis/chat] Sending ${storagePaths.length} paths to agent at ${agentUrl}`
-      );
+      if (!extractedDocs.length) {
+        return res.status(400).json({
+          error: 'No readable documents',
+          message: 'None of the uploaded documents could be read. Please re-upload the files at step 2.',
+        });
+      }
 
-      // Call AgenteDocumental with document_paths (not pre-extracted text)
+      console.log(`[ai-analysis/chat] Sending ${extractedDocs.length} pre-extracted docs to agent at ${agentUrl}`);
+
+      // Send pre-extracted text to AgenteDocumental (no shared volume needed)
       const { data: agentData } = await axios.post(
         `${agentUrl}/analyze`,
         {
           message,
-          document_paths: storagePaths,
-          allowed_roots: allowedRoots,
+          document_paths: [],
+          documents: extractedDocs,
           country_name: countryName,
           provider_name: providerName,
           profile_id: profileId,
