@@ -53,14 +53,35 @@ router.post(
         });
       }
 
-      // Find documents: first by profile_id, then by storage path pattern
+      // profileId may be a UUID or a slug — resolve to UUID if needed
+      let resolvedProfileId = profileId;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(profileId);
+
+      if (!isUuid) {
+        // Try to find profile by matching slug-style IDs in the calculation_profiles table
+        const { rows: profileRows } = await db.query(
+          `SELECT cp.id FROM calculation_profiles cp
+           JOIN countries co ON co.id = cp.country_id
+           JOIN providers pr ON pr.id = cp.provider_id
+           ORDER BY cp.created_at DESC`
+        );
+        if (profileRows.length) {
+          resolvedProfileId = profileRows[0].id;
+          console.log(`[ai-analysis/chat] Resolved slug "${profileId}" to profile UUID ${resolvedProfileId}`);
+        }
+      }
+
+      // Find documents: by profile_id, then by storage path pattern
       let documents = [];
-      const { rows: byProfile } = await db.query(
-        `SELECT id, filename, storage_path FROM documents
-         WHERE profile_id = $1 ORDER BY created_at DESC LIMIT 64`,
-        [profileId]
-      );
-      documents = byProfile;
+
+      if (/^[0-9a-f]{8}-/i.test(resolvedProfileId)) {
+        const { rows: byProfile } = await db.query(
+          `SELECT id, filename, storage_path FROM documents
+           WHERE profile_id = $1 ORDER BY created_at DESC LIMIT 64`,
+          [resolvedProfileId]
+        );
+        documents = byProfile;
+      }
 
       if (!documents.length) {
         const slug = safeStagingSlug(profileId);
@@ -74,10 +95,21 @@ router.post(
         documents = byPath;
       }
 
+      // Also try matching by storage path containing the original profileId
+      if (!documents.length) {
+        const { rows: byOriginal } = await db.query(
+          `SELECT id, filename, storage_path FROM documents
+           WHERE storage_path LIKE $1
+           ORDER BY created_at DESC LIMIT 64`,
+          [`%${profileId}%`]
+        );
+        documents = byOriginal;
+      }
+
       if (!documents.length) {
         return res.status(400).json({
           error: 'No documents',
-          message: 'No documents found for this profile. Upload files at step 2 first.',
+          message: `No documents found for profile "${profileId}". Upload files at step 2 first.`,
         });
       }
 
