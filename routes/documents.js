@@ -143,7 +143,11 @@ router.post(
 
 /**
  * POST /api/admin/documents/upload-staging
- * Wizard step 2 — store bytes without calculation_profiles linkage (promoted on activate).
+ * Wizard step 2 — now persists documents directly (no staging).
+ * Creates documents records immediately with copyright_status='pending'.
+ * 
+ * Body: profile_slug, country_id, provider_id, profile_id, document_type, description
+ * File: multipart/form-data 'file'
  */
 router.post(
   '/documents/upload-staging',
@@ -156,6 +160,9 @@ router.post(
     }
 
     const profile_slug_raw = String(req.body.profile_slug ?? '').trim();
+    const country_id = String(req.body.country_id ?? '').trim();
+    const provider_id = String(req.body.provider_id ?? '').trim();
+    const profile_id = String(req.body.profile_id ?? '').trim();
     const document_type = String(req.body.document_type ?? '').trim();
     const descriptionRaw = req.body.description;
     const description =
@@ -165,57 +172,108 @@ router.post(
       return res.status(400).json({ error: 'profile_slug is required.' });
     }
 
+    if (!country_id || !provider_id || !profile_id) {
+      console.log('[upload-staging] Missing IDs - will create document without full validation (wizard draft mode)');
+      // For wizard drafts, we might not have IDs yet - that's OK, we'll link them later
+    }
+
     if (!document_type || !VALID_DOC_TYPES.includes(document_type)) {
       return res.status(400).json({
         error: `document_type must be one of: ${VALID_DOC_TYPES.join(', ')}.`,
       });
     }
 
-    const profile_slug = safeStagingSlug(profile_slug_raw);
-
     try {
-      const folderKey = stagingFolderKey(profile_slug_raw);
-      const storagePath = await saveDocument(folderKey, req.file.originalname, req.file.buffer);
-      const filenameStored = path.basename(req.file.originalname);
+      // If we have profile_id, verify it exists
+      if (profile_id) {
+        const { rows: profRows } = await db.query(
+          `SELECT id FROM calculation_profiles WHERE id = $1`,
+          [profile_id]
+        );
+        if (!profRows.length) {
+          return res.status(404).json({ error: 'calculation_profiles row not found.' });
+        }
+      }
 
+      // Save directly to permanent storage (not staging)
+      // Use profile_id if available, otherwise use profile_slug as folder name
+      const folderKey = profile_id || `draft-${safeStagingSlug(profile_slug_raw)}`;
+      const uniquePrefix = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+      const uniqueFilename = `${uniquePrefix}_${req.file.originalname}`;
+      const storagePath = await saveDocument(folderKey, uniqueFilename, req.file.buffer);
+
+      console.log(`[upload-staging] Saved to permanent storage: ${storagePath}`);
+
+      // Create documents record immediately (not document_staging)
       const { rows } = await db.query(
-        `INSERT INTO document_staging
-           (profile_slug, filename, storage_path, document_type, description, copyright_status, uploaded_by)
-         VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+        `INSERT INTO documents
+           (country_id, provider_id, profile_id, filename, storage_path,
+            document_type, description, copyright_status, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
          RETURNING id, filename, document_type, copyright_status, created_at`,
-        [profile_slug, filenameStored, storagePath, document_type, description, req.user.id]
+        [
+          country_id || null,
+          provider_id || null,
+          profile_id || null,
+          uniqueFilename,
+          storagePath,
+          document_type,
+          description,
+          req.user.id
+        ]
       );
 
+      console.log(`[upload-staging] Created documents record: ${rows[0].id}`);
       res.status(201).json(rows[0]);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Failed to upload staged document.' });
+      console.error('[upload-staging] Error:', err);
+      res.status(500).json({ error: 'Failed to upload document.' });
     }
   }
 );
 
 /**
- * GET /api/admin/documents/staging?profile_slug=
+ * GET /api/admin/documents/staging?profile_slug=&profile_id=
+ * Wizard step 2 — list uploaded documents for a profile (reads from documents table now)
  */
 router.get('/documents/staging', requireAuth, requireAdmin, async (req, res) => {
   const profile_slug_raw = String(req.query.profile_slug ?? '').trim();
-  if (!profile_slug_raw) {
-    return res.status(400).json({ error: 'profile_slug query param required.' });
+  const profile_id = String(req.query.profile_id ?? '').trim();
+  
+  if (!profile_slug_raw && !profile_id) {
+    return res.status(400).json({ error: 'profile_slug or profile_id query param required.' });
   }
-  const profile_slug = safeStagingSlug(profile_slug_raw);
 
   try {
-    const { rows } = await db.query(
-      `SELECT id, filename, document_type, description, copyright_status, created_at
-       FROM document_staging
-       WHERE profile_slug = $1
-       ORDER BY created_at DESC`,
-      [profile_slug]
-    );
+    let rows;
+    
+    if (profile_id) {
+      // Prefer profile_id if available
+      const result = await db.query(
+        `SELECT id, filename, document_type, description, copyright_status, created_at
+         FROM documents
+         WHERE profile_id = $1
+         ORDER BY created_at DESC`,
+        [profile_id]
+      );
+      rows = result.rows;
+    } else {
+      // Fallback to profile_slug for drafts (look for documents with null profile_id and matching storage_path pattern)
+      const profile_slug = safeStagingSlug(profile_slug_raw);
+      const result = await db.query(
+        `SELECT id, filename, document_type, description, copyright_status, created_at
+         FROM documents
+         WHERE storage_path LIKE $1
+         ORDER BY created_at DESC`,
+        [`%draft-${profile_slug}%`]
+      );
+      rows = result.rows;
+    }
+    
     res.json(rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to list staged documents.' });
+    console.error('[staging list] Error:', err);
+    res.status(500).json({ error: 'Failed to list documents.' });
   }
 });
 

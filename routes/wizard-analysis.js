@@ -24,7 +24,7 @@ const router = express.Router();
 
 /**
  * POST /api/admin/wizard/run-analysis
- * Promotes staged docs for profile_slug (if any), then runs the same pipeline as POST /documents/analyze.
+ * Uses existing documents for profile_id (no promotion needed - documents are already persisted).
  * Body: { profile_slug, calculation_profile_id, country_id, provider_id }
  */
 router.post(
@@ -65,42 +65,22 @@ router.post(
         });
       }
 
-      const slug = safeStagingSlug(profile_slug);
-      const { rows: stagingCount } = await db.query(
-        `SELECT COUNT(*)::int AS n FROM document_staging WHERE profile_slug = $1`,
-        [slug]
+      // Get all documents for this profile (already persisted permanently)
+      const { rows: existingDocs } = await db.query(
+        `SELECT id FROM documents WHERE profile_id = $1 ORDER BY created_at DESC LIMIT 64`,
+        [calculation_profile_id]
       );
-
-      let document_ids = [];
-      let promoted_documents = [];
-
-      if (stagingCount[0]?.n > 0) {
-        promoted_documents = await promoteStagingToProfile(
-          profile_slug,
-          country_id,
-          provider_id,
-          calculation_profile_id,
-          req.user.id
-        );
-        document_ids = promoted_documents
-          .map((p) => p.document_id)
-          .filter(Boolean);
-      }
-
-      if (!document_ids.length) {
-        const { rows: existingDocs } = await db.query(
-          `SELECT id FROM documents WHERE profile_id = $1 ORDER BY created_at DESC LIMIT 64`,
-          [calculation_profile_id]
-        );
-        document_ids = existingDocs.map((r) => r.id);
-      }
+      
+      const document_ids = existingDocs.map((r) => r.id);
 
       if (!document_ids.length) {
         return res.status(400).json({
           error:
-            'No documents to analyze. Upload files at step 2 (staging) or ensure documents exist for this profile.',
+            'No documents found for this profile. Upload files at step 2 first.',
         });
       }
+
+      console.log(`[wizard/run-analysis] Found ${document_ids.length} documents for profile ${calculation_profile_id}`);
 
       const outcome = await runDocumentAnalysis({
         userId: req.user.id,
@@ -114,11 +94,11 @@ router.post(
 
       res.status(201).json({
         ...outcome.payload,
-        promoted_documents,
         document_ids,
+        documents_analyzed: document_ids.length,
       });
     } catch (err) {
-      console.error(err);
+      console.error('[wizard/run-analysis] Error:', err);
       res.status(500).json({ error: String(err.message || err) });
     }
   }
