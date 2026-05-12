@@ -10,6 +10,8 @@ const { requireAuth, requireAdmin } = require('../lib/supabase');
 const { checkAIQuota }  = require('../lib/quota');
 const { logAudit } = require('../lib/audit');
 const { runDocumentAnalysis } = require('../lib/run-document-analysis');
+const { checkCopyright } = require('../lib/copyright-checker');
+const { extractText }   = require('../lib/document-text-extract');
 const {
   safeStagingSlug,
   stagingFolderKey,
@@ -68,6 +70,77 @@ const VALID_DOC_TYPES = [
 ];
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/admin/documents/copyright-check
+ * Admin only — pre-upload copyright clearance check.
+ *
+ * Accepts multipart/form-data with a `file` field.
+ * Extracts the first 3,000 chars of text and runs the copyright decision tree.
+ *
+ * Responses:
+ *   200 — { copyright_status: 'clear'|'restricted', reason, legal_basis,
+ *            paraphrase_required, matched_pattern, checked_chars }
+ *   400 — validation error (no file)
+ *   451 — { error:'copyright_restriction', copyright_status:'blocked',
+ *            reason, legal_basis, matched_pattern, action_required }
+ *
+ * The file is NOT stored by this endpoint — it is read in-memory only.
+ */
+router.post(
+  '/documents/copyright-check',
+  requireAuth,
+  requireAdmin,
+  uploadSingle,
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided for copyright check.' });
+    }
+
+    const filename = req.file.originalname;
+    paUploadApiDebug('copyright-check', { filename, size: req.file.size });
+
+    let text = '';
+    try {
+      text = await extractText(req.file.buffer, filename);
+    } catch (extractErr) {
+      paUploadApiDebug('copyright-check: text extraction failed', extractErr?.message);
+      // Continue with empty text — checker will default to RESTRICTED
+    }
+
+    const result = checkCopyright(text, filename);
+
+    paUploadApiDebug('copyright-check result', {
+      filename,
+      status: result.status,
+      matched: result.matched_pattern,
+      chars: result.checked_chars,
+    });
+
+    if (result.status === 'blocked') {
+      return res.status(451).json({
+        error: 'copyright_restriction',
+        copyright_status: 'blocked',
+        reason: result.reason,
+        legal_basis: result.legal_basis,
+        matched_pattern: result.matched_pattern,
+        action_required:
+          'This document contains an explicit AI opt-out clause (DSM Directive Art. 4). '
+          + 'Upload has been blocked. Admin must review the document manually and enter '
+          + 'any applicable rules without AI assistance.',
+      });
+    }
+
+    return res.status(200).json({
+      copyright_status: result.status,          // 'clear' | 'restricted'
+      reason: result.reason,
+      legal_basis: result.legal_basis,
+      paraphrase_required: result.paraphrase_required,
+      matched_pattern: result.matched_pattern,
+      checked_chars: result.checked_chars,
+    });
+  }
+);
 
 /**
  * POST /api/admin/documents/upload
