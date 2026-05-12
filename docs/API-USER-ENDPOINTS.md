@@ -9,19 +9,19 @@ Railway deploy steps: [RAILWAY-DEPLOYMENT-GUIDE.md](./RAILWAY-DEPLOYMENT-GUIDE.m
 
 ## Base URLs
 
-| Environment | `base_url` (no trailing slash) |
-|-------------|--------------------------------|
+| Environment       | `base_url` (no trailing slash)           |
+| ----------------- | ---------------------------------------- |
 | **Railway (dev)** | `https://planadvisor-dev.up.railway.app` |
-| **Local** | `http://localhost:3000` |
+| **Local**         | `http://localhost:3000`                  |
 
 In Postman, set:
 
-| Variable | Purpose |
-|----------|---------|
-| `base_url` | `https://planadvisor-dev.up.railway.app` or `http://localhost:3000` |
-| `pa_plan_api_key` | Same value as server env **`PA_PLAN_API_KEY`** (required on Railway in production for all routes except probes) |
-| `access_token` | Supabase JWT after login |
-| `profile_id`, `scenario_id`, … | From prior responses |
+| Variable                       | Purpose                                                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `base_url`                     | `https://planadvisor-dev.up.railway.app` or `http://localhost:3000`                                             |
+| `pa_plan_api_key`              | Same value as server env **`PA_PLAN_API_KEY`** (required on Railway in production for all routes except probes) |
+| `access_token`                 | Supabase JWT after login                                                                                        |
+| `profile_id`, `scenario_id`, … | From prior responses                                                                                            |
 
 **Postman secrets:** Add **`pa_plan_api_key`** and **`access_token`** to a **Postman Environment** (recommended) or Globals — **not** as empty collection defaults. **Select that environment** in the top-right dropdown before sending. The repo collection sends **`Authorization: Bearer {{access_token}}`** and **`X-API-Key`** as **explicit headers** on each `/api/*` request.
 
@@ -122,41 +122,41 @@ Or use **`POST /api/admin/users`** with another user’s **admin** JWT once that
 
 **Credentials column:** **`—`** = no headers. **`X-API-Key`** = required **only when** `PA_PLAN_API_KEY` is set on the server (always on Railway prod). **`Bearer`** = Supabase access token. Real requests use **both** where both cells apply.
 
-| Method | Path | Credentials | Roles |
-|--------|------|-------------|--------|
-| `GET` | `/live` | — | — |
-| `GET` | `/health` | — | — |
-| `GET` | `/api/me` | X-API-Key + Bearer | admin, internal, client |
-| `GET` | `/api/user/dashboard` | X-API-Key + Bearer | admin, internal, client |
-| `GET` | `/api/countries` | X-API-Key + Bearer | admin, internal, client |
-| `GET` | `/api/providers` | X-API-Key + Bearer | admin, internal, client |
-| `GET` | `/api/calculator/available-countries` | X-API-Key + Bearer | admin, internal, client |
-| `GET` | `/api/calculator/profile/:id` | X-API-Key + Bearer | admin, internal, client |
-| `POST` | `/api/calculator/calculate` | X-API-Key + Bearer | admin, internal, client |
-| `GET` | `/api/scenarios` | X-API-Key + Bearer | admin, internal, client |
-| `GET` | `/api/scenarios/:id` | X-API-Key + Bearer | admin, internal, client |
-| `POST` | `/api/scenarios/:id/generate-summary` | X-API-Key + Bearer | admin, internal, client* |
-| `GET` | `/api/admin/dashboard` | X-API-Key + Bearer | **admin** |
-| `GET` | `/api/admin/document-analyses` | X-API-Key + Bearer | **admin** |
-| `GET` | `/api/admin/document-analyses/:id` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/countries` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/providers` | X-API-Key + Bearer | **admin** |
-| `GET` | `/api/admin/users` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/users` | X-API-Key + Bearer | **admin** |
-| `PATCH` | `/api/admin/users/:id` | X-API-Key + Bearer | **admin** |
-| `GET` | `/api/admin/profiles` | X-API-Key + Bearer | **admin** |
-| `GET` | `/api/admin/profiles/:id` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/profiles` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/profiles/:id/activate` | X-API-Key + Bearer | **admin** |
-| `GET` | `/api/admin/documents` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/documents/upload` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/documents/analyze` | X-API-Key + Bearer | **admin** |
-| `PATCH` | `/api/admin/rules/:id` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/rules/:id/approve` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/rules/:id/reject` | X-API-Key + Bearer | **admin** |
-| `PATCH` | `/api/admin/plans/:id` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/plans/:id/approve` | X-API-Key + Bearer | **admin** |
-| `POST` | `/api/admin/plans/:id/reject` | X-API-Key + Bearer | **admin** |
+| Method  | Path                                  | Credentials        | Roles                     |
+| ------- | ------------------------------------- | ------------------ | ------------------------- |
+| `GET`   | `/live`                               | —                  | —                         |
+| `GET`   | `/health`                             | —                  | —                         |
+| `GET`   | `/api/me`                             | X-API-Key + Bearer | admin, internal, client   |
+| `GET`   | `/api/user/dashboard`                 | X-API-Key + Bearer | admin, internal, client   |
+| `GET`   | `/api/countries`                      | X-API-Key + Bearer | admin, internal, client   |
+| `GET`   | `/api/providers`                      | X-API-Key + Bearer | admin, internal, client   |
+| `GET`   | `/api/calculator/available-countries` | X-API-Key + Bearer | admin, internal, client   |
+| `GET`   | `/api/calculator/profile/:id`         | X-API-Key + Bearer | admin, internal, client   |
+| `POST`  | `/api/calculator/calculate`           | X-API-Key + Bearer | admin, internal, client   |
+| `GET`   | `/api/scenarios`                      | X-API-Key + Bearer | admin, internal, client   |
+| `GET`   | `/api/scenarios/:id`                  | X-API-Key + Bearer | admin, internal, client   |
+| `POST`  | `/api/scenarios/:id/generate-summary` | X-API-Key + Bearer | admin, internal, client\* |
+| `GET`   | `/api/admin/dashboard`                | X-API-Key + Bearer | **admin**                 |
+| `GET`   | `/api/admin/document-analyses`        | X-API-Key + Bearer | **admin**                 |
+| `GET`   | `/api/admin/document-analyses/:id`    | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/countries`                | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/providers`                | X-API-Key + Bearer | **admin**                 |
+| `GET`   | `/api/admin/users`                    | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/users`                    | X-API-Key + Bearer | **admin**                 |
+| `PATCH` | `/api/admin/users/:id`                | X-API-Key + Bearer | **admin**                 |
+| `GET`   | `/api/admin/profiles`                 | X-API-Key + Bearer | **admin**                 |
+| `GET`   | `/api/admin/profiles/:id`             | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/profiles`                 | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/profiles/:id/activate`    | X-API-Key + Bearer | **admin**                 |
+| `GET`   | `/api/admin/documents`                | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/documents/upload`         | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/documents/analyze`        | X-API-Key + Bearer | **admin**                 |
+| `PATCH` | `/api/admin/rules/:id`                | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/rules/:id/approve`        | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/rules/:id/reject`         | X-API-Key + Bearer | **admin**                 |
+| `PATCH` | `/api/admin/plans/:id`                | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/plans/:id/approve`        | X-API-Key + Bearer | **admin**                 |
+| `POST`  | `/api/admin/plans/:id/reject`         | X-API-Key + Bearer | **admin**                 |
 
 \* See [Scenario access](#scenario-access-rules).
 
@@ -192,7 +192,7 @@ Or use **`POST /api/admin/users`** with another user’s **admin** JWT once that
 
 - Method: `GET`
 - URL: `{{base_url}}/health`
-The API key middleware **does not run** for this path — probes stay unauthenticated.
+  The API key middleware **does not run** for this path — probes stay unauthenticated.
 
 **Example (DB OK)**
 
@@ -377,11 +377,11 @@ Save `scenario_id` from the response into Postman variable `{{scenario_id}}`.
 
 ### Scenario access rules
 
-| Role | `GET /api/scenarios` | `GET /api/scenarios/:id`, export, delete, `POST .../generate-summary` |
-|------|----------------------|--------------------------------------------------------|
-| **admin** | All (up to 200) | Full access |
-| **internal** | Scenarios whose creator is **admin** or **internal** | **403** if scenario creator is **client** |
-| **client** | `created_by` = self or same `company_id` | Same ownership/company check |
+| Role         | `GET /api/scenarios`                                 | `GET /api/scenarios/:id`, export, delete, `POST .../generate-summary` |
+| ------------ | ---------------------------------------------------- | --------------------------------------------------------------------- |
+| **admin**    | All (up to 200)                                      | Full access                                                           |
+| **internal** | Scenarios whose creator is **admin** or **internal** | **403** if scenario creator is **client**                             |
+| **client**   | `created_by` = self or same `company_id`             | Same ownership/company check                                          |
 
 ---
 
@@ -642,7 +642,7 @@ Requires ≥ **1** approved rule and ≥ **1** approved plan. Archives any other
 - URL: `{{base_url}}/api/admin/documents/upload`
 - Authorization: Bearer `{{access_token}}`
 - Body: **form-data**
-  - `file` — type *File* (allowed: `.pdf`, `.docx`, `.xlsx`, `.csv`, `.txt`, `.md`)
+  - `file` — type _File_ (allowed: `.pdf`, `.docx`, `.xlsx`, `.csv`, `.txt`, `.md`)
   - `country_id` — text
   - `provider_id` — text
   - `document_type` — text, one of:  
@@ -799,16 +799,16 @@ Admin-only steps (as an admin user): catalog → profiles → rules/plans → ac
 
 ## Common HTTP status codes
 
-| Code | Meaning |
-|------|---------|
+| Code  | Meaning                                                                                                                                                             |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `401` | Missing/invalid **`X-API-Key`** (when `PA_PLAN_API_KEY` is set) — checked **first**; or missing/invalid Bearer token (`Unauthorized` JSON from Supabase validation) |
-| `403` | Inactive user, missing `users_profile`, or role/access rule |
-| `404` | Unknown resource |
-| `409` | Conflict (e.g. duplicate country code, duplicate user profile) |
-| `422` | Validation / business rule (e.g. profile activation, calculator prerequisites) |
-| `429` | Global rate limit, AI rate limit, or AI quota (`lib/quota.js`) |
-| `451` | Document analysis blocked (copyright) |
-| `503` | Summary agent not configured (`generate-summary` only) |
+| `403` | Inactive user, missing `users_profile`, or role/access rule                                                                                                         |
+| `404` | Unknown resource                                                                                                                                                    |
+| `409` | Conflict (e.g. duplicate country code, duplicate user profile)                                                                                                      |
+| `422` | Validation / business rule (e.g. profile activation, calculator prerequisites)                                                                                      |
+| `429` | Global rate limit, AI rate limit, or AI quota (`lib/quota.js`)                                                                                                      |
+| `451` | Document analysis blocked (copyright)                                                                                                                               |
+| `503` | Summary agent not configured (`generate-summary` only)                                                                                                              |
 
 ---
 
