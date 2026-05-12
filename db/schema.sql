@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS transaction_rules (
   approved_by              UUID REFERENCES users_profile(id),
   approved_at              TIMESTAMPTZ,
   created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  index_ui                 INTEGER,             -- optional display order in the calculator UI (NULL = unset)
   UNIQUE (profile_id, input_key)
 );
 
