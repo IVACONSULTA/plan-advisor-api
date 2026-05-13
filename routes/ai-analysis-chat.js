@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const axios = require('axios');
 const rateLimit = require('express-rate-limit');
@@ -181,20 +182,58 @@ router.post(
       // Must stay below Netlify SSR `timeout` when the browser uses the Astro BFF; keep
       // a few seconds headroom so we return JSON before the edge kills the function.
       const agentTimeoutMs = parseInt(process.env.DOC_AGENT_TIMEOUT_MS || '290000', 10);
+      const correlationId = crypto.randomUUID();
+      const docCount =
+        Array.isArray(agentPayload.documents) && agentPayload.documents.length
+          ? agentPayload.documents.length
+          : Array.isArray(agentPayload.document_paths)
+            ? agentPayload.document_paths.length
+            : 0;
 
-      const { data: agentData } = await axios.post(
-        `${agentUrl}/analyze`,
-        agentPayload,
-        {
-          headers: process.env.AGENT_API_KEY
-            ? { 'X-API-Key': process.env.AGENT_API_KEY }
-            : {},
+      console.log(
+        `[ai-analysis/chat] correlationId=${correlationId} → POST ${agentUrl}/analyze ` +
+          `(timeout_ms=${agentTimeoutMs}, doc_slots=${docCount}, message_len=${message.length})`
+      );
+
+      const agentStarted = Date.now();
+      let agentData;
+      try {
+        const agentHeaders = {
+          'X-Correlation-Id': correlationId,
+          ...(process.env.AGENT_API_KEY ? { 'X-API-Key': process.env.AGENT_API_KEY } : {}),
+        };
+        const res = await axios.post(`${agentUrl}/analyze`, agentPayload, {
+          headers: agentHeaders,
           timeout: agentTimeoutMs,
-        }
+          // Avoid hanging on rare chunked / parser edge cases — body is small JSON.
+          maxBodyLength: 25 * 1024 * 1024,
+          maxContentLength: 25 * 1024 * 1024,
+        });
+        agentData = res.data;
+      } catch (axErr) {
+        const ms = Date.now() - agentStarted;
+        const code = axErr.code || axErr.cause?.code;
+        console.error(
+          `[ai-analysis/chat] correlationId=${correlationId} agent request failed after ${ms}ms:`,
+          code || axErr.message,
+          axErr.response?.status,
+          typeof axErr.response?.data === 'string'
+            ? axErr.response.data.slice(0, 500)
+            : axErr.response?.data
+        );
+        throw axErr;
+      }
+
+      const elapsedMs = Date.now() - agentStarted;
+      const outLen =
+        agentData && typeof agentData.output === 'string' ? agentData.output.length : 0;
+      console.log(
+        `[ai-analysis/chat] correlationId=${correlationId} ← agent OK in ${elapsedMs}ms ` +
+          `(output_json_string_len=${outLen}, top_level_keys=${agentData && typeof agentData === 'object' ? Object.keys(agentData).join(',') : typeof agentData})`
       );
 
       // Parse agent response — `output` is a JSON string (DocumentAnalysisResult from AgenteDocumental).
-      const rawOutput = String(agentData.output ?? '');
+      const rawOutput = String(agentData?.output ?? '');
       let assistant = '';
       let rules = [];
 
@@ -237,12 +276,18 @@ router.post(
 
       try {
         res.json(payload);
+        console.log(
+          `[ai-analysis/chat] correlationId=${correlationId} sent JSON to client ` +
+            `(rules=${rules.length}, assistant_len=${assistant.length})`
+        );
       } catch (jsonErr) {
         console.error('[ai-analysis/chat] res.json failed:', jsonErr?.message || jsonErr);
-        res.status(500).json({
-          error: 'Failed to serialize chat response',
-          message: String(jsonErr?.message || jsonErr),
-        });
+        if (!res.headersSent) {
+          res.status(500).json({
+            error: 'Failed to serialize chat response',
+            message: String(jsonErr?.message || jsonErr),
+          });
+        }
       }
     } catch (err) {
       if (err.response?.status) {
