@@ -70,25 +70,10 @@ router.post('/profiles', requireAuth, requireAdmin, async (req, res) => {
       });
     }
 
-    // Check if profile already exists for this country+provider
-    const { rows: existingProfiles } = await db.query(
-      `SELECT * FROM calculation_profiles
-       WHERE country_id = $1 AND provider_id = $2
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [resolvedCountryId, resolvedProviderId]
-    );
-
-    if (existingProfiles.length > 0) {
-      // Return existing profile
-      return res.status(200).json({
-        ...existingProfiles[0],
-        reused: true,
-        message: 'Existing profile found for this country/provider combination.',
-      });
-    }
-
-    // Create new profile
+    // Always create a fresh draft profile so the wizard gets a unique ID that is not
+    // confused with any existing active or archived profile for the same country+provider.
+    // Previously this endpoint returned an existing profile when one was found, which caused
+    // documents uploaded at step 2 to be linked to the wrong (active) profile.
     const { rows } = await db.query(
       `INSERT INTO calculation_profiles
          (country_id, provider_id, version, currency, calculation_basis, status, created_by)
