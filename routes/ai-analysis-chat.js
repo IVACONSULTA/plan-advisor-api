@@ -178,6 +178,10 @@ router.post(
         };
       }
 
+      // Must stay below Netlify SSR `timeout` when the browser uses the Astro BFF; keep
+      // a few seconds headroom so we return JSON before the edge kills the function.
+      const agentTimeoutMs = parseInt(process.env.DOC_AGENT_TIMEOUT_MS || '290000', 10);
+
       const { data: agentData } = await axios.post(
         `${agentUrl}/analyze`,
         agentPayload,
@@ -185,43 +189,61 @@ router.post(
           headers: process.env.AGENT_API_KEY
             ? { 'X-API-Key': process.env.AGENT_API_KEY }
             : {},
-          timeout: 180_000,
+          timeout: agentTimeoutMs,
         }
       );
 
-      // Parse agent response — the output can be a JSON string or structured
+      // Parse agent response — `output` is a JSON string (DocumentAnalysisResult from AgenteDocumental).
       const rawOutput = String(agentData.output ?? '');
       let assistant = '';
       let rules = [];
 
+      const mapRuleRow = (r, i) => ({
+        id: r.id || `ext-${i + 1}`,
+        label: r.label || '',
+        inputKey: r.input_key || r.inputKey || '',
+        direction: r.direction || '',
+        obligation: r.obligation || '',
+        operationGroup: r.operation_group || r.operationGroup || '',
+        paPerItem: String(r.pa_transactions_per_item ?? r.paPerItem ?? ''),
+        status: r.status || 'proposed',
+        reason: r.reason || '',
+        sourceExcerpt: r.source_excerpt || r.sourceExcerpt || '',
+      });
+
       try {
         const parsed = JSON.parse(rawOutput);
-        assistant = parsed.summary || parsed.assistant || rawOutput;
-        rules = Array.isArray(parsed.rules)
-          ? parsed.rules.map((r, i) => ({
-              id: r.id || `ext-${i + 1}`,
-              label: r.label || '',
-              inputKey: r.input_key || '',
-              direction: r.direction || '',
-              obligation: r.obligation || '',
-              operationGroup: r.operation_group || '',
-              paPerItem: String(r.pa_transactions_per_item ?? ''),
-              status: r.status || 'proposed',
-              reason: r.reason || '',
-              sourceExcerpt: r.source_excerpt || '',
-            }))
-          : [];
+        const rows = Array.isArray(parsed.transaction_rules)
+          ? parsed.transaction_rules
+          : Array.isArray(parsed.rules)
+            ? parsed.rules
+            : [];
+        rules = rows.map(mapRuleRow);
+        assistant =
+          (typeof parsed.summary_markdown === 'string' && parsed.summary_markdown.trim()) ||
+          (typeof parsed.summary === 'string' && parsed.summary.trim()) ||
+          (typeof parsed.assistant === 'string' && parsed.assistant.trim()) ||
+          rawOutput;
       } catch {
-        // Not JSON — treat the whole output as assistant text
         assistant = rawOutput;
       }
 
-      res.json({
+      const payload = {
         assistant,
         rules,
         raw_output: rawOutput,
         documents_used: documents.map((d) => d.filename),
-      });
+      };
+
+      try {
+        res.json(payload);
+      } catch (jsonErr) {
+        console.error('[ai-analysis/chat] res.json failed:', jsonErr?.message || jsonErr);
+        res.status(500).json({
+          error: 'Failed to serialize chat response',
+          message: String(jsonErr?.message || jsonErr),
+        });
+      }
     } catch (err) {
       if (err.response?.status) {
         console.error('[ai-analysis/chat] Agent error:', err.response.status, err.response.data);
