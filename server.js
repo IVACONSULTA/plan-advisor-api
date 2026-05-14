@@ -9,6 +9,7 @@ const {
   validateApiKeyConfiguredAtStartup,
   requireApiKey,
 } = require('./lib/api-key');
+const { checkStorageMount } = require('./lib/storage');
 
 // ─── Env validation ──────────────────────────────────────────────────────────
 // Fail fast for truly required variables; warn for optional ones.
@@ -89,28 +90,29 @@ app.use('/api/scenarios',  require('./routes/scenarios'));
 // Always HTTP 200 once the process is listening (matches Railway + our deploy docs).
 // Use JSON `db` / `status` to tell if Postgres is actually reachable.
 app.get('/health', async (_req, res) => {
+  const storage = checkStorageMount();
+  let dbStatus = 'connected';
   try {
     await dbQuery('SELECT 1');
-    res.status(200).json({
-      status: 'ok',
-      db: 'connected',
-      agents: {
-        doc_agent:     !!process.env.DOC_AGENT_URL,
-        summary_agent: !!process.env.SUMMARY_AGENT_URL,
-      },
-      timestamp: new Date().toISOString(),
-    });
   } catch (_err) {
-    res.status(200).json({
-      status: 'degraded',
-      db: 'unreachable',
-      agents: {
-        doc_agent:     !!process.env.DOC_AGENT_URL,
-        summary_agent: !!process.env.SUMMARY_AGENT_URL,
-      },
-      timestamp: new Date().toISOString(),
-    });
+    dbStatus = 'unreachable';
   }
+  res.status(200).json({
+    status: dbStatus === 'connected' ? 'ok' : 'degraded',
+    db: dbStatus,
+    storage: {
+      driver:  storage.driver,
+      path:    storage.path,
+      mounted: storage.mounted,
+      writable: storage.writable,
+      warning: storage.warning || undefined,
+    },
+    agents: {
+      doc_agent:     !!process.env.DOC_AGENT_URL,
+      summary_agent: !!process.env.SUMMARY_AGENT_URL,
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
@@ -138,4 +140,14 @@ app.listen(PORT, HOST, () => {
   testConnection().catch((err) => {
     console.error('⚠ PostgreSQL not reachable at startup — API is up; DB-dependent routes may fail:', err.message);
   });
+  // Check document storage mount — logs a visible warning if the Railway Volume is not attached.
+  const storageStatus = checkStorageMount();
+  if (storageStatus.warning) {
+    console.warn(storageStatus.warning);
+  } else {
+    console.log(
+      `✓ Document storage: driver=${storageStatus.driver} path=${storageStatus.path} ` +
+      `mounted=${storageStatus.mounted} writable=${storageStatus.writable}`
+    );
+  }
 });
