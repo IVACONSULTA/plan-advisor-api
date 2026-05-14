@@ -105,7 +105,7 @@ router.post(
       text = await extractText(req.file.buffer, filename);
     } catch (extractErr) {
       paUploadApiDebug('copyright-check: text extraction failed', extractErr?.message);
-      // Continue with empty text — checker will default to RESTRICTED
+      // Continue with empty text — checker will default to CLEAR (no explicit prohibition)
     }
 
     const result = checkCopyright(text, filename);
