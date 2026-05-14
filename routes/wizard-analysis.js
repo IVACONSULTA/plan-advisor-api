@@ -118,19 +118,64 @@ router.post(
         console.log(`[wizard/run-analysis] Using custom analysis message: ${message.slice(0, 100)}...`);
       }
 
-      const outcome = await runDocumentAnalysis({
-        userId: req.user.id,
-        profile_id: calculation_profile_id,
-        document_ids,
-        message, // Pass the custom message to the analysis function
-      });
+      // ──────────────────────────────────────────────────────────────────
+      // Async flow: create a `running` analysis row up front, kick off the
+      // agent call in the background, and return 202 immediately so the
+      // BFF/Netlify function does not time out on long agent calls.
+      // Clients poll GET /wizard/analysis-status?analysis_id=… for completion.
+      // ──────────────────────────────────────────────────────────────────
+      const { rows: createdRows } = await db.query(
+        `INSERT INTO document_analyses
+           (profile_id, document_ids, analysis_json, status, guardrail_audit, created_by)
+         VALUES ($1, $2, '{}'::jsonb, 'running', '{}'::jsonb, $3)
+         RETURNING id`,
+        [calculation_profile_id, document_ids, req.user.id]
+      );
+      const analysisId = createdRows[0].id;
 
-      if (outcome.kind === 'copyright_blocked') {
-        return res.status(451).json(outcome.body);
-      }
+      // Fire-and-forget — never await. Any error is captured on the row.
+      (async () => {
+        try {
+          const outcome = await runDocumentAnalysis({
+            userId: req.user.id,
+            profile_id: calculation_profile_id,
+            document_ids,
+            message,
+            existingAnalysisId: analysisId,
+          });
 
-      res.status(201).json({
-        ...outcome.payload,
+          if (outcome.kind === 'copyright_blocked') {
+            await db.query(
+              `UPDATE document_analyses
+                 SET status = 'failed',
+                     summary = $2
+               WHERE id = $1`,
+              [analysisId, `copyright_blocked: ${JSON.stringify(outcome.body).slice(0, 800)}`]
+            );
+            console.warn(`[wizard/run-analysis] Analysis ${analysisId} blocked by copyright.`);
+            return;
+          }
+
+          console.log(`[wizard/run-analysis] Analysis ${analysisId} completed successfully.`);
+        } catch (bgErr) {
+          console.error(`[wizard/run-analysis] Analysis ${analysisId} failed:`, bgErr);
+          try {
+            await db.query(
+              `UPDATE document_analyses
+                 SET status = 'failed',
+                     summary = $2
+               WHERE id = $1`,
+              [analysisId, String(bgErr.message || bgErr).slice(0, 1000)]
+            );
+          } catch (dbErr) {
+            console.error(`[wizard/run-analysis] Could not mark analysis ${analysisId} failed:`, dbErr);
+          }
+        }
+      })();
+
+      res.status(202).json({
+        analysis_id: analysisId,
+        status: 'running',
         document_ids,
         documents_analyzed: document_ids.length,
       });
@@ -140,6 +185,54 @@ router.post(
     }
   }
 );
+
+/**
+ * GET /api/admin/wizard/analysis-status?analysis_id=…
+ * Returns current status of a document analysis kicked off via POST /wizard/run-analysis.
+ *
+ * Response:
+ *   { analysis_id, status: 'running'|'completed'|'failed',
+ *     error_message: string|null,
+ *     rules_proposed: number, plans_proposed: number,
+ *     created_at: ISO timestamp }
+ */
+router.get('/wizard/analysis-status', requireAuth, requireAdmin, async (req, res) => {
+  const analysis_id = String(req.query?.analysis_id ?? '').trim();
+  if (!analysis_id) {
+    return res.status(400).json({ error: 'analysis_id query param is required.' });
+  }
+
+  try {
+    const { rows } = await db.query(
+      `SELECT da.id, da.profile_id, da.status, da.summary, da.created_at,
+              (SELECT COUNT(*)::int FROM transaction_rules
+                WHERE profile_id = da.profile_id) AS rules_count,
+              (SELECT COUNT(*)::int FROM plans
+                WHERE profile_id = da.profile_id) AS plans_count
+         FROM document_analyses da
+        WHERE da.id = $1`,
+      [analysis_id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Analysis not found.' });
+    }
+
+    const r = rows[0];
+    res.json({
+      analysis_id: r.id,
+      profile_id: r.profile_id,
+      status: r.status,
+      error_message: r.status === 'failed' ? r.summary : null,
+      rules_proposed: r.rules_count || 0,
+      plans_proposed: r.plans_count || 0,
+      created_at: r.created_at,
+    });
+  } catch (err) {
+    console.error('[wizard/analysis-status] Error:', err);
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
 
 /**
  * POST /api/admin/wizard/approve-analysis

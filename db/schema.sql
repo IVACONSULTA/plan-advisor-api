@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS document_analyses (
   analysis_json   JSONB NOT NULL,
   summary         TEXT,
   status          TEXT NOT NULL DEFAULT 'completed'
-                    CHECK (status IN ('completed','failed','pending_review')),
+                    CHECK (status IN ('running','completed','failed','pending_review')),
   guardrail_audit JSONB NOT NULL DEFAULT '{}',
   created_by      UUID NOT NULL REFERENCES users_profile(id),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
