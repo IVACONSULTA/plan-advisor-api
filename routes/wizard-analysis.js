@@ -25,7 +25,7 @@ const router = express.Router();
 /**
  * POST /api/admin/wizard/run-analysis
  * Uses existing documents for profile_id (no promotion needed - documents are already persisted).
- * Body: { profile_slug, calculation_profile_id, country_id, provider_id }
+ * Body: { profile_slug, calculation_profile_id, country_id, provider_id, message }
  */
 router.post(
   '/wizard/run-analysis',
@@ -41,6 +41,10 @@ router.post(
       ).trim();
       const country_id = String(req.body?.country_id ?? '').trim();
       const provider_id = String(req.body?.provider_id ?? '').trim();
+      // Optional custom message for the document analysis agent
+      const message = String(req.body?.message ?? '').trim() ||
+        process.env.DOCUMENT_ANALYSIS_MESSAGE ||
+        '';
 
       if (
         !profile_slug ||
@@ -71,22 +75,22 @@ router.post(
         `SELECT id FROM documents WHERE profile_id = $1 ORDER BY created_at DESC LIMIT 64`,
         [calculation_profile_id]
       );
-      
+
       // If no documents found by profile_id, try by storage path (draft mode)
       if (!existingDocs.length) {
         const draftPattern = `draft-${safeStagingSlug(profile_slug)}%`;
         const { rows: draftDocs } = await db.query(
-          `SELECT id FROM documents 
-           WHERE storage_path LIKE $1 
+          `SELECT id FROM documents
+           WHERE storage_path LIKE $1
            ORDER BY created_at DESC LIMIT 64`,
           [`%${draftPattern}%`]
         );
         existingDocs = draftDocs;
-        
+
         // Update these documents to link them to the profile now
         if (draftDocs.length) {
           await db.query(
-            `UPDATE documents 
+            `UPDATE documents
              SET profile_id = $1, country_id = $2, provider_id = $3
              WHERE id = ANY($4::uuid[])`,
             [
@@ -99,7 +103,7 @@ router.post(
           console.log(`[wizard/run-analysis] Linked ${draftDocs.length} draft documents to profile ${calculation_profile_id}`);
         }
       }
-      
+
       const document_ids = existingDocs.map((r) => r.id);
 
       if (!document_ids.length) {
@@ -110,11 +114,15 @@ router.post(
       }
 
       console.log(`[wizard/run-analysis] Found ${document_ids.length} documents for profile ${calculation_profile_id}`);
+      if (message) {
+        console.log(`[wizard/run-analysis] Using custom analysis message: ${message.slice(0, 100)}...`);
+      }
 
       const outcome = await runDocumentAnalysis({
         userId: req.user.id,
         profile_id: calculation_profile_id,
         document_ids,
+        message, // Pass the custom message to the analysis function
       });
 
       if (outcome.kind === 'copyright_blocked') {
