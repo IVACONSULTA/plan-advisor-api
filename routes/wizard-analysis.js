@@ -236,7 +236,9 @@ router.get('/wizard/analysis-status', requireAuth, requireAdmin, async (req, res
 
 /**
  * POST /api/admin/wizard/approve-analysis
- * Approves all proposed rules & plans for profile_id; writes JSON artifact on API disk (local ops).
+ * Approves all proposed rules & plans for profile_id, then activates the
+ * calculation_profiles row: status → 'active', approved_by + approved_at + active_from
+ * are all set to the current user / current timestamp.
  * Body: { profile_id, profile_slug? }
  */
 router.post('/wizard/approve-analysis', requireAuth, requireAdmin, async (req, res) => {
@@ -247,6 +249,17 @@ router.post('/wizard/approve-analysis', requireAuth, requireAdmin, async (req, r
       return res.status(400).json({ error: 'profile_id is required.' });
     }
 
+    // 1. Verify profile exists.
+    const { rows: profileRows } = await db.query(
+      `SELECT id, status FROM calculation_profiles WHERE id = $1`,
+      [profile_id]
+    );
+    if (!profileRows.length) {
+      return res.status(404).json({ error: 'Profile not found.' });
+    }
+    console.log(`[wizard/approve-analysis] Approving profile ${profile_id} (current status: ${profileRows[0].status})`);
+
+    // 2. Approve all proposed transaction rules for this profile.
     const ruleUp = await db.query(
       `UPDATE transaction_rules
        SET status = 'approved', approved_by = $2, approved_at = NOW()
@@ -254,6 +267,9 @@ router.post('/wizard/approve-analysis', requireAuth, requireAdmin, async (req, r
        RETURNING id`,
       [profile_id, req.user.id]
     );
+    console.log(`[wizard/approve-analysis] Approved ${ruleUp.rows.length} rule(s)`);
+
+    // 3. Approve all proposed plans for this profile.
     const planUp = await db.query(
       `UPDATE plans
        SET status = 'approved', approved_by = $2, approved_at = NOW()
@@ -261,43 +277,64 @@ router.post('/wizard/approve-analysis', requireAuth, requireAdmin, async (req, r
        RETURNING id`,
       [profile_id, req.user.id]
     );
+    console.log(`[wizard/approve-analysis] Approved ${planUp.rows.length} plan(s)`);
 
-    const baseDir =
-      process.env.WIZARD_LOCAL_ARTIFACT_DIR ||
-      path.join(process.cwd(), 'data', 'wizard-artifacts');
-    const slugPart =
-      safeStagingSlug(profile_slug || profile_id).replace(
-        /[^a-zA-Z0-9-_]/g,
-        ''
-      ) || 'profile';
-    const dir = path.join(baseDir, slugPart);
-    fs.mkdirSync(dir, { recursive: true });
-    const artifactPath = path.join(dir, `approved-${Date.now()}.json`);
-    fs.writeFileSync(
-      artifactPath,
-      JSON.stringify(
-        {
-          profile_id,
-          profile_slug: profile_slug || null,
-          approved_rule_ids: ruleUp.rows.map((r) => r.id),
-          approved_plan_ids: planUp.rows.map((r) => r.id),
-          approved_at: new Date().toISOString(),
-          approved_by: req.user.id,
-        },
-        null,
-        2
-      ),
-      'utf8'
+    // 4. Activate the calculation profile.
+    const { rows: activatedProfile } = await db.query(
+      `UPDATE calculation_profiles
+         SET status      = 'active',
+             approved_by = $2,
+             approved_at = NOW(),
+             active_from = CURRENT_DATE
+       WHERE id = $1
+       RETURNING id, status, approved_by, approved_at, active_from`,
+      [profile_id, req.user.id]
     );
+    console.log(`[wizard/approve-analysis] Profile ${profile_id} activated:`, activatedProfile[0]);
+
+    // 5. Write local artifact (best-effort — failure does not abort the response).
+    let artifactPath = null;
+    try {
+      const baseDir =
+        process.env.WIZARD_LOCAL_ARTIFACT_DIR ||
+        path.join(process.cwd(), 'data', 'wizard-artifacts');
+      const slugPart =
+        safeStagingSlug(profile_slug || profile_id).replace(/[^a-zA-Z0-9-_]/g, '') || 'profile';
+      const dir = path.join(baseDir, slugPart);
+      fs.mkdirSync(dir, { recursive: true });
+      artifactPath = path.join(dir, `approved-${Date.now()}.json`);
+      fs.writeFileSync(
+        artifactPath,
+        JSON.stringify(
+          {
+            profile_id,
+            profile_slug: profile_slug || null,
+            approved_rule_ids: ruleUp.rows.map((r) => r.id),
+            approved_plan_ids: planUp.rows.map((r) => r.id),
+            approved_at: activatedProfile[0].approved_at,
+            active_from: activatedProfile[0].active_from,
+            approved_by: req.user.id,
+          },
+          null,
+          2
+        ),
+        'utf8'
+      );
+    } catch (artifactErr) {
+      console.warn('[wizard/approve-analysis] Could not write local artifact (non-fatal):', artifactErr.message);
+    }
 
     res.json({
       ok: true,
       approved_rules: ruleUp.rows.length,
       approved_plans: planUp.rows.length,
+      profile_status: activatedProfile[0].status,
+      active_from: activatedProfile[0].active_from,
+      approved_at: activatedProfile[0].approved_at,
       artifact_path: artifactPath,
     });
   } catch (err) {
-    console.error(err);
+    console.error('[wizard/approve-analysis] Error:', err);
     res.status(500).json({ error: String(err.message || err) });
   }
 });
