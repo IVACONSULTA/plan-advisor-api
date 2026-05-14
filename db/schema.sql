@@ -140,7 +140,8 @@ CREATE TABLE IF NOT EXISTS assumptions (
   status             TEXT NOT NULL DEFAULT 'proposed'
                        CHECK (status IN ('proposed','approved','rejected','pending_confirmation')),
   source_document_id UUID REFERENCES documents(id),
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (profile_id, key)
 );
 
 -- ─── 7.10 document_analyses ─────────────────────────────────────────────────

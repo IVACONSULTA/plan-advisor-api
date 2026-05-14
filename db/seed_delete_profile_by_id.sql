@@ -1,6 +1,6 @@
 DO $$
 DECLARE
-  pid uuid := '1bd4472a-45d3-4242-a401-397406e049cc';
+  pid uuid := 'c6978d7c-4448-4f43-8a11-c57580156d08';
 BEGIN
   DELETE FROM scenarios          WHERE profile_id = pid;
   DELETE FROM document_analyses  WHERE profile_id = pid;
