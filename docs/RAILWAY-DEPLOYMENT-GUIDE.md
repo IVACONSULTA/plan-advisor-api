@@ -184,7 +184,7 @@ The API automatically creates subdirectories per profile:
 1. In the Railway canvas, click **+ New Service → GitHub Repo**
 2. Connect your GitHub account if not already connected
 3. Select the `PlanAdvisorAPI` repository
-4. Railway reads `railway.json` and builds with **Railpack** (same builder family as ExpressApi — Node 20+, `npm install`, then `npm start`)
+4. Railway reads `railway.json` and builds with **Railpack** (Node 22+ when using the repo Dockerfile base image, or per `engines` / `nixpacks.toml`; `npm install`, then `npm start`)
 5. The service runs **`npm start`** → `node server.js` (`dotenv` is loaded from code at startup)
 
 ### Option B — Deploy via CLI

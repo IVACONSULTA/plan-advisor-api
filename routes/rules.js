@@ -5,6 +5,33 @@ const { requireAuth, requireAdmin } = require('../lib/supabase');
 const { logAudit } = require('../lib/audit');
 
 /**
+ * GET /api/admin/transaction-rules?profile_id=<uuid>
+ * Admin only — list all transaction rules for a profile, ordered by created_at.
+ */
+router.get('/transaction-rules', requireAuth, requireAdmin, async (req, res) => {
+  const profile_id = String(req.query?.profile_id ?? '').trim();
+  if (!profile_id) {
+    return res.status(400).json({ error: 'profile_id query param is required.' });
+  }
+  try {
+    const { rows } = await db.query(
+      `SELECT id, profile_id, input_key, label, direction, obligation, operation_group,
+              pa_transactions_per_item, reason, source_document_id, source_excerpt,
+              confidence, status, manually_edited, approved_by, approved_at,
+              index_ui, created_at
+         FROM transaction_rules
+        WHERE profile_id = $1
+        ORDER BY index_ui NULLS LAST, created_at ASC`,
+      [profile_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /transaction-rules]', err);
+    res.status(500).json({ error: 'Failed to fetch transaction rules.' });
+  }
+});
+
+/**
  * PATCH /api/admin/rules/:id
  * Admin only — edit a proposed or pending rule.
  */
@@ -131,6 +158,37 @@ router.post('/rules/:id/reject', requireAuth, requireAdmin, async (req, res) => 
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reject rule.' });
+  }
+});
+
+/**
+ * DELETE /api/admin/rules/:id
+ * Admin only — permanently remove a transaction rule.
+ */
+router.delete('/rules/:id', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rows: current } = await db.query(
+      `SELECT id, profile_id FROM transaction_rules WHERE id = $1`,
+      [id]
+    );
+    if (!current.length) return res.status(404).json({ error: 'Rule not found.' });
+
+    await db.query(`DELETE FROM transaction_rules WHERE id = $1`, [id]);
+
+    await logAudit({
+      userId:     req.user.id,
+      action:     'delete_rule',
+      entityType: 'transaction_rule',
+      entityId:   id,
+      beforeJson: current[0],
+      afterJson:  null,
+    });
+
+    res.status(204).end();
+  } catch (err) {
+    console.error('[DELETE /rules/:id]', err);
+    res.status(500).json({ error: 'Failed to delete rule.' });
   }
 });
 

@@ -7,27 +7,82 @@ const { calculatorRuleGroupsCountSelect } = require('../lib/calculator-rules-cou
 
 /**
  * POST /api/admin/profiles
- * Admin only — create a new calculation profile in 'draft' status.
+ * Admin only — find or create a calculation profile in 'draft' status.
+ * Returns existing profile if country+provider match found, otherwise creates new.
+ * 
+ * Body: 
+ *   { country_id, provider_id, version, currency, ... }  (existing UUIDs)
+ * OR
+ *   { country_code, country_name, provider_name, provider_type, version, currency, ... }  (wizard)
  */
 router.post('/profiles', requireAuth, requireAdmin, async (req, res) => {
-  const { country_id, provider_id, version, currency, calculation_basis, notes } = req.body;
+  const { 
+    country_id, 
+    provider_id, 
+    country_code, 
+    country_name,
+    provider_name,
+    provider_type,
+    version, 
+    currency, 
+    calculation_basis, 
+    notes 
+  } = req.body;
 
-  if (!country_id || !provider_id || !version || !currency) {
+  if (!version || !currency) {
     return res.status(400).json({
-      error: 'country_id, provider_id, version, and currency are required.',
+      error: 'version and currency are required.',
     });
   }
 
   try {
+    let resolvedCountryId = country_id;
+    let resolvedProviderId = provider_id;
+
+    // Auto-create country if code/name provided
+    if (!resolvedCountryId && country_code && country_name) {
+      const { rows: countryRows } = await db.query(
+        `INSERT INTO countries (code, name, created_by, created_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+        [country_code.toUpperCase(), country_name.trim(), req.user.id]
+      );
+      resolvedCountryId = countryRows[0].id;
+    }
+
+    // Auto-create provider if name provided
+    if (!resolvedProviderId && provider_name) {
+      const provType = provider_type || 'PA';
+      const { rows: providerRows } = await db.query(
+        `INSERT INTO providers (name, type, created_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (name) DO UPDATE SET type = EXCLUDED.type
+         RETURNING id`,
+        [provider_name.trim(), provType]
+      );
+      resolvedProviderId = providerRows[0].id;
+    }
+
+    if (!resolvedCountryId || !resolvedProviderId) {
+      return res.status(400).json({
+        error: 'Must provide either (country_id, provider_id) or (country_code, country_name, provider_name).',
+      });
+    }
+
+    // Always create a fresh draft profile so the wizard gets a unique ID that is not
+    // confused with any existing active or archived profile for the same country+provider.
+    // Previously this endpoint returned an existing profile when one was found, which caused
+    // documents uploaded at step 2 to be linked to the wrong (active) profile.
     const { rows } = await db.query(
       `INSERT INTO calculation_profiles
          (country_id, provider_id, version, currency, calculation_basis, status, created_by)
        VALUES ($1, $2, $3, $4, $5, 'draft', $6)
        RETURNING *`,
-      [country_id, provider_id, version, currency,
+      [resolvedCountryId, resolvedProviderId, version, currency,
        calculation_basis || 'PA transactions', req.user.id]
     );
-    res.status(201).json(rows[0]);
+    res.status(201).json({ ...rows[0], reused: false });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create profile.' });
@@ -188,10 +243,119 @@ router.post('/profiles/:id/activate', requireAuth, requireAdmin, async (req, res
       afterJson:  { status: 'active' },
     });
 
-    res.json(rows[0]);
+    const promoteSlugRaw =
+      typeof req.body?.promote_profile_slug === 'string'
+        ? req.body.promote_profile_slug.trim()
+        : '';
+
+    let promoted_documents = [];
+    if (promoteSlugRaw) {
+      try {
+        const { promoteStagingToProfile } = require('../lib/document-staging');
+        promoted_documents = await promoteStagingToProfile(
+          promoteSlugRaw,
+          rows[0].country_id,
+          rows[0].provider_id,
+          id,
+          req.user.id
+        );
+      } catch (promoteErr) {
+        console.error('promoteStagingToProfile:', promoteErr);
+        return res.status(500).json({
+          error:
+            'Profile was activated but staged documents could not be promoted to live storage. Use POST /api/admin/documents/promote-staging or fix the error.',
+          detail: String(promoteErr.message || promoteErr),
+          profile: rows[0],
+        });
+      }
+    }
+
+    res.json({ ...rows[0], promoted_documents });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to activate profile.' });
+  }
+});
+
+/**
+ * DELETE /api/admin/profiles/:id
+ * Admin only — delete a calculation profile (only if status is NOT 'active').
+ * Also deletes related documents from storage.
+ */
+router.delete('/profiles/:id', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { rows: profileRows } = await db.query(
+      `SELECT id, status, country_id, provider_id FROM calculation_profiles WHERE id = $1`,
+      [id]
+    );
+
+    if (!profileRows.length) {
+      return res.status(404).json({ error: 'Profile not found.' });
+    }
+
+    const profile = profileRows[0];
+
+    if (profile.status === 'active') {
+      return res.status(400).json({
+        error: 'Cannot delete active profile. Archive it first or change status.',
+      });
+    }
+
+    const { rows: documents } = await db.query(
+      `SELECT id, storage_path FROM documents WHERE profile_id = $1`,
+      [id]
+    );
+
+    const { deleteDocument } = require('../lib/storage');
+    for (const doc of documents) {
+      try {
+        await deleteDocument(doc.storage_path);
+      } catch (delErr) {
+        console.warn(`[DELETE profile] Could not delete document file ${doc.storage_path}:`, delErr);
+      }
+    }
+
+    await db.query('BEGIN');
+    // Delete in FK-safe order (ai_usage_logs → scenarios → plans/documents → profile)
+    await db.query(
+      `DELETE FROM ai_usage_logs
+        WHERE scenario_id IN (SELECT id FROM scenarios WHERE profile_id = $1)`,
+      [id]
+    );
+    await db.query(
+      `DELETE FROM ai_usage_logs
+        WHERE document_id IN (SELECT id FROM documents WHERE profile_id = $1)`,
+      [id]
+    );
+    await db.query(
+      `UPDATE scenarios SET recommended_plan_id = NULL WHERE profile_id = $1`,
+      [id]
+    );
+    await db.query('DELETE FROM scenarios WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM document_analyses WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM transaction_rules WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM plans WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM assumptions WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM documents WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM calculation_profiles WHERE id = $1', [id]);
+    await db.query('COMMIT');
+
+    await logAudit({
+      userId:     req.user.id,
+      action:     'delete_profile',
+      entityType: 'calculation_profile',
+      entityId:   id,
+      beforeJson: profile,
+      afterJson:  null,
+    });
+
+    res.json({ success: true, deleted_profile_id: id });
+  } catch (err) {
+    await db.query('ROLLBACK').catch(() => {});
+    console.error('[DELETE /profiles/:id]', err);
+    res.status(500).json({ error: 'Failed to delete profile.' });
   }
 });
 

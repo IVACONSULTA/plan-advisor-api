@@ -14,7 +14,10 @@ router.get('/users', requireAuth, requireAdmin, async (req, res) => {
               up.active, up.created_at,
               c.id   AS company_id,
               c.name AS company_name,
-              c.type AS company_type
+              c.type AS company_type,
+              (SELECT COUNT(*)::int FROM ai_usage_logs l
+                 WHERE l.user_id = up.id
+                   AND l.created_at >= date_trunc('month', NOW())) AS ai_calls_this_month
        FROM users_profile up
        LEFT JOIN companies c ON c.id = up.company_id
        ORDER BY up.created_at DESC`

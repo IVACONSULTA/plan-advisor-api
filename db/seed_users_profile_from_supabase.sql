@@ -40,6 +40,14 @@ VALUES
     'client',
     NULL,
     TRUE
+  ),
+  (
+    '18a1b83c-99fe-41cf-a7bf-dc34a9df3c37',
+    'edercruz@ivaconsulta.com',
+    'edercruz',
+    'client',
+    NULL,
+    TRUE
   )
 ON CONFLICT (id) DO UPDATE SET
   email     = EXCLUDED.email,

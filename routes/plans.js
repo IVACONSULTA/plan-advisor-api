@@ -5,6 +5,32 @@ const { requireAuth, requireAdmin } = require('../lib/supabase');
 const { logAudit } = require('../lib/audit');
 
 /**
+ * GET /api/admin/plans?profile_id=<uuid>
+ * Admin only — list all plans for a profile.
+ */
+router.get('/plans', requireAuth, requireAdmin, async (req, res) => {
+  const profile_id = String(req.query?.profile_id ?? '').trim();
+  if (!profile_id) {
+    return res.status(400).json({ error: 'profile_id query param is required.' });
+  }
+  try {
+    const { rows } = await db.query(
+      `SELECT id, profile_id, plan_name, included_pa_transactions, annual_fee,
+              monthly_fee, extra_transaction_cost, source_document_id, source_excerpt,
+              confidence, status, approved_by, approved_at, created_at
+         FROM plans
+        WHERE profile_id = $1
+        ORDER BY included_pa_transactions ASC, created_at ASC`,
+      [profile_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /plans]', err);
+    res.status(500).json({ error: 'Failed to fetch plans.' });
+  }
+});
+
+/**
  * PATCH /api/admin/plans/:id
  * Admin only — edit a proposed plan.
  */
@@ -125,6 +151,38 @@ router.post('/plans/:id/reject', requireAuth, requireAdmin, async (req, res) => 
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reject plan.' });
+  }
+});
+
+/**
+ * DELETE /api/admin/plans/:id
+ * Admin only — delete a plan permanently.
+ */
+router.delete('/plans/:id', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { rows: current } = await db.query(
+      `SELECT * FROM plans WHERE id = $1`,
+      [id]
+    );
+    if (!current.length) return res.status(404).json({ error: 'Plan not found.' });
+
+    await db.query('DELETE FROM plans WHERE id = $1', [id]);
+
+    await logAudit({
+      userId:     req.user.id,
+      action:     'delete_plan',
+      entityType: 'plan',
+      entityId:   id,
+      beforeJson: current[0],
+      afterJson:  null,
+    });
+
+    res.json({ success: true, deleted_plan_id: id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to delete plan.' });
   }
 });
 

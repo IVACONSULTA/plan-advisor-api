@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS countries (
 -- ─── 7.4 providers ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS providers (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name       TEXT NOT NULL,
+  name       TEXT NOT NULL UNIQUE,  -- Provider name must be unique for ON CONFLICT
   type       TEXT NOT NULL,  -- 'PA' | 'PDP'
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -66,8 +66,8 @@ CREATE TABLE IF NOT EXISTS calculation_profiles (
 -- ─── 7.9 documents ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS documents (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  country_id       UUID NOT NULL REFERENCES countries(id),
-  provider_id      UUID NOT NULL REFERENCES providers(id),
+  country_id       UUID REFERENCES countries(id),       -- nullable during wizard drafts
+  provider_id      UUID REFERENCES providers(id),       -- nullable during wizard drafts
   profile_id       UUID REFERENCES calculation_profiles(id),
   filename         TEXT NOT NULL,
   storage_path     TEXT NOT NULL,  -- NEVER exposed in API responses
@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS transaction_rules (
   approved_by              UUID REFERENCES users_profile(id),
   approved_at              TIMESTAMPTZ,
   created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  index_ui                 INTEGER,             -- optional display order in the calculator UI (NULL = unset)
   UNIQUE (profile_id, input_key)
 );
 
@@ -139,7 +140,8 @@ CREATE TABLE IF NOT EXISTS assumptions (
   status             TEXT NOT NULL DEFAULT 'proposed'
                        CHECK (status IN ('proposed','approved','rejected','pending_confirmation')),
   source_document_id UUID REFERENCES documents(id),
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (profile_id, key)
 );
 
 -- ─── 7.10 document_analyses ─────────────────────────────────────────────────
@@ -150,7 +152,7 @@ CREATE TABLE IF NOT EXISTS document_analyses (
   analysis_json   JSONB NOT NULL,
   summary         TEXT,
   status          TEXT NOT NULL DEFAULT 'completed'
-                    CHECK (status IN ('completed','failed','pending_review')),
+                    CHECK (status IN ('running','completed','failed','pending_review')),
   guardrail_audit JSONB NOT NULL DEFAULT '{}',
   created_by      UUID NOT NULL REFERENCES users_profile(id),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -185,6 +187,26 @@ CREATE TABLE IF NOT EXISTS ai_usage_logs (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ─── 7.9b document_staging ────────────────────────────────────────────────────
+-- Wizard step 2–3: files before a calculation_profiles row exists or before activation.
+-- Promoted into `documents` on POST /profiles/:id/activate when promote_profile_slug is sent.
+CREATE TABLE IF NOT EXISTS document_staging (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_slug     TEXT NOT NULL,
+  filename         TEXT NOT NULL,
+  storage_path     TEXT NOT NULL,
+  document_type    TEXT NOT NULL
+                     CHECK (document_type IN (
+                       'provider_pricing','transaction_guide','country_legal',
+                       'contract','commercial_confirmation','other'
+                     )),
+  description      TEXT,
+  copyright_status TEXT NOT NULL DEFAULT 'pending'
+                     CHECK (copyright_status IN ('pending','clear','restricted','blocked')),
+  uploaded_by      UUID NOT NULL REFERENCES users_profile(id),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ─── 7.13 audit_logs ────────────────────────────────────────────────────────
 -- Immutable. No UPDATE or DELETE should ever run against this table.
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -211,3 +233,4 @@ CREATE INDEX IF NOT EXISTS idx_documents_profile          ON documents(profile_i
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity          ON audit_logs(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_calc_profiles_status       ON calculation_profiles(status);
 CREATE INDEX IF NOT EXISTS idx_calc_profiles_country_prov ON calculation_profiles(country_id, provider_id);
+CREATE INDEX IF NOT EXISTS idx_document_staging_slug      ON document_staging(profile_slug);

@@ -120,10 +120,10 @@ router.get("/profile/:id", requireAuth, async (req, res) => {
 
     const { rows: rules } = await db.query(
       `SELECT id, input_key, label, direction, obligation,
-              operation_group, pa_transactions_per_item
+              operation_group, pa_transactions_per_item, index_ui
        FROM transaction_rules
        WHERE profile_id = $1 AND status = 'approved'
-       ORDER BY operation_group NULLS LAST, label ASC`,
+       ORDER BY index_ui NULLS LAST, operation_group NULLS LAST, label ASC`,
       [id],
     );
 
@@ -141,6 +141,7 @@ router.get("/profile/:id", requireAuth, async (req, res) => {
         obligation: r.obligation,
         operation_group: r.operation_group,
         pa_transactions_per_item: parseFloat(r.pa_transactions_per_item),
+        index_ui: r.index_ui != null ? parseInt(r.index_ui, 10) : null,
       })),
     });
   } catch (err) {
@@ -197,11 +198,11 @@ router.post("/calculate", requireAuth, async (req, res) => {
     // 2. Load approved transaction rules
     const { rows: rules } = await db.query(
       `SELECT input_key, label, direction, obligation,
-              operation_group, pa_transactions_per_item
+              operation_group, pa_transactions_per_item, index_ui
        FROM transaction_rules
        WHERE profile_id = $1 AND status = 'approved'
-       ORDER BY operation_group NULLS LAST, direction, obligation,
-                pa_transactions_per_item, label ASC`,
+       ORDER BY index_ui NULLS LAST, operation_group NULLS LAST,
+                direction, obligation, pa_transactions_per_item, label ASC`,
       [profile_id],
     );
 
