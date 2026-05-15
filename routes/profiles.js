@@ -318,11 +318,25 @@ router.delete('/profiles/:id', requireAuth, requireAdmin, async (req, res) => {
     }
 
     await db.query('BEGIN');
-    // Delete in order respecting foreign key constraints
+    // Delete in FK-safe order (ai_usage_logs → scenarios → plans/documents → profile)
+    await db.query(
+      `DELETE FROM ai_usage_logs
+        WHERE scenario_id IN (SELECT id FROM scenarios WHERE profile_id = $1)`,
+      [id]
+    );
+    await db.query(
+      `DELETE FROM ai_usage_logs
+        WHERE document_id IN (SELECT id FROM documents WHERE profile_id = $1)`,
+      [id]
+    );
+    await db.query(
+      `UPDATE scenarios SET recommended_plan_id = NULL WHERE profile_id = $1`,
+      [id]
+    );
     await db.query('DELETE FROM scenarios WHERE profile_id = $1', [id]);
     await db.query('DELETE FROM document_analyses WHERE profile_id = $1', [id]);
-    await db.query('DELETE FROM plans WHERE profile_id = $1', [id]);
     await db.query('DELETE FROM transaction_rules WHERE profile_id = $1', [id]);
+    await db.query('DELETE FROM plans WHERE profile_id = $1', [id]);
     await db.query('DELETE FROM assumptions WHERE profile_id = $1', [id]);
     await db.query('DELETE FROM documents WHERE profile_id = $1', [id]);
     await db.query('DELETE FROM calculation_profiles WHERE id = $1', [id]);
