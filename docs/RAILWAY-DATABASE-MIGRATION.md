@@ -6,14 +6,14 @@ How to export and import PostgreSQL databases between Railway environments (e.g.
 
 ## Quick Reference
 
-| Task | Command |
-|------|---------|
-| Export full database | `pg_dump -Fc --no-acl --no-owner "$DATABASE_URL" -f backup.dump` |
-| Export as plain SQL | `pg_dump --no-acl --no-owner "$DATABASE_URL" > backup.sql` |
-| Import custom format | `pg_restore --clean --no-acl --no-owner -d "$DATABASE_URL" backup.dump` |
-| Import plain SQL | `psql "$DATABASE_URL" < backup.sql` |
-| **Railway: Get Dev DB URL** | `railway env use dev && railway variables get DATABASE_URL` |
-| **Railway: Dev → Prod** | `railway env use dev && pg_dump ... \| railway env use prod && pg_restore ...` |
+| Task                        | Command                                                                                                              |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Export full database        | `pg_dump -Fc --no-acl --no-owner "$DATABASE_URL" -f backup.dump`                                                     |
+| Export as plain SQL         | `pg_dump --no-acl --no-owner "$DATABASE_URL" > backup.sql`                                                           |
+| Import custom format        | `pg_restore --clean --no-acl --no-owner -d "$DATABASE_URL" backup.dump`                                              |
+| Import plain SQL            | `psql "$DATABASE_URL" < backup.sql`                                                                                  |
+| **Railway: Get Dev DB URL** | `railway env link dev && railway variables`                                                                          |
+| **Railway: Dev → Prod**     | `railway env link dev && railway run -- pg_dump ... && railway env link production && railway run -- pg_restore ...` |
 
 ---
 
@@ -81,6 +81,7 @@ pg_restore --clean --no-acl --no-owner \
 ```
 
 **Flags explained:**
+
 - `--clean` — Drop existing objects before recreating (use with caution)
 - `--if-exists` — Add this to avoid errors if objects don't exist
 - `--no-owner` — Skip ownership settings (Railway handles this)
@@ -139,133 +140,147 @@ railway login
 railway status
 
 # List available environments
-railway environment list
+railway env list
+
+# Link to a specific environment (this selects which environment to use)
+railway env link Dev      # or Prod, Staging, etc.
 ```
 
-#### Scenario: Sync Railway Dev → Railway Prod
+**Note:** Use `railway env link <ENV>` to select which environment to operate in, not `railway env use`.
 
-When your local database is out of sync and you need to copy the complete database state from Dev to Production:
+#### Method 1: Using `railway run` (Most Reliable - v4.x)
+
+This is the recommended approach for Railway CLI v4.x. The `run` command automatically injects environment variables:
 
 **Step 1: Export from Dev environment**
 
 ```bash
 # Switch to dev environment
-railway environment use dev
+railway env link Dev
 
 # Verify you're on the correct environment
 railway status
 
-# Get the DATABASE_URL and export the complete database
-pg_dump -Fc --no-acl --no-owner \
-  "$(railway variables get DATABASE_URL)" \
-  -f dev_to_prod_backup.dump
+# Export using railway run (DATABASE_URL is auto-injected)
+railway run -- pg_dump -Fc --no-acl --no-owner "$DATABASE_URL" -f dev_to_prod_backup.dump
 
 # Verify the dump was created
 ls -lh dev_to_prod_backup.dump
 ```
 
-**Step 2: Preview what will change in Production (Optional but Recommended)**
+**Step 2: Import to Production**
 
 ```bash
-# Switch to production
-railway environment use production
+# Switch to production environment
+railway env link Prod
 
-# List tables that exist in prod (to compare with dev)
-psql "$(railway variables get DATABASE_URL)" -c "\dt"
+# Verify environment (CRITICAL - this prevents accidents)
+railway status
 
-# Check row counts in production before migration
-psql "$(railway variables get DATABASE_URL)" -c "
-SELECT schemaname, relname, n_live_tup 
-FROM pg_stat_user_tables 
-ORDER BY n_live_tup DESC;
-"
+# Restore to production using railway run
+# WARNING: This will DROP and RECREATE all tables. Use with caution!
+railway run -- pg_restore --clean --if-exists --no-acl --no-owner -d "$DATABASE_URL" dev_to_prod_backup.dump
+```
+
+**Step 3: Verify the migration**
+
+```bash
+# Check that tables exist and have data
+railway run -- psql "$DATABASE_URL" -c "\dt"
+
+# Count rows in key tables to verify
+railway run -- psql "$DATABASE_URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+```
+
+#### Method 2: Using Public URL (For External Connections)
+
+If you need to connect from your local machine without `railway run`, use the public URL:
+
+**Step 1: Get the DATABASE_PUBLIC_URL**
+
+```bash
+# View all variables to find the public URL
+railway env link dev
+railway variables
+
+# Or get it from Railway Dashboard:
+# Dashboard → Dev Environment → Postgres Service → Connect tab → Copy "Public URL"
+```
+
+**Step 2: Export using the public URL**
+
+```bash
+# Use the DATABASE_PUBLIC_URL directly
+export DEV_URL="postgresql://postgres:PASSWORD@HOST:PORT/railway"
+pg_dump -Fc --no-acl --no-owner "$DEV_URL" -f dev_to_prod_backup.dump
 ```
 
 **Step 3: Import to Production**
 
 ```bash
-# Switch to production environment
-railway environment use production
+# Get Production public URL from Dashboard or CLI
+export PROD_URL="postgresql://postgres:PASSWORD@HOST:PORT/railway"
 
-# Verify environment (CRITICAL - this prevents accidents)
-railway status
-
-# Restore the dev backup to production
-# WARNING: This will DROP and RECREATE all tables. Use with caution!
-pg_restore --clean --if-exists --no-acl --no-owner \
-  -d "$(railway variables get DATABASE_URL)" \
-  dev_to_prod_backup.dump
-
-# If you get errors about existing connections, use --single-transaction
-# Note: This rolls back everything if any error occurs
-pg_restore --clean --if-exists --single-transaction --no-acl --no-owner \
-  -d "$(railway variables get DATABASE_URL)" \
-  dev_to_prod_backup.dump
+# Restore to production
+pg_restore --clean --if-exists --no-acl --no-owner -d "$PROD_URL" dev_to_prod_backup.dump
 ```
 
-**Step 4: Verify the migration**
+#### Method 3: Environment-to-Environment Direct Transfer
+
+For transferring directly between Railway environments without saving to a local file:
 
 ```bash
-# Check that tables exist and have data
-psql "$(railway variables get DATABASE_URL)" -c "\dt"
+#!/bin/bash
+# save as: sync-railway-envs.sh
 
-# Count rows in key tables to verify
-psql "$(railway variables get DATABASE_URL)" -c "
-SELECT schemaname, relname, n_live_tup 
-FROM pg_stat_user_tables 
-ORDER BY n_live_tup DESC;
-"
+echo "=== Railway Dev → Prod Sync ==="
+
+# Export from Dev and pipe directly to Prod
+railway env link dev
+echo "Exporting from Dev..."
+railway run -- pg_dump -Fc --no-acl --no-owner "$DATABASE_URL" > /tmp/dev_backup.dump
+
+# Switch to prod and import
+railway env link production
+echo "Importing to Production..."
+railway run -- pg_restore --clean --if-exists --no-acl --no-owner -d "$DATABASE_URL" /tmp/dev_backup.dump
+
+# Cleanup
+rm /tmp/dev_backup.dump
+echo "✓ Sync complete!"
 ```
 
 #### Alternative: Schema Only + Data Only (For Large Databases)
 
-If the full dump is too large or you need more control:
-
 ```bash
 # Export schema only from Dev
-railway environment use dev
-pg_dump --schema-only --no-acl --no-owner \
-  "$(railway variables get DATABASE_URL)" \
-  > schema.sql
+railway env link dev
+railway run -- pg_dump --schema-only --no-acl --no-owner "$DATABASE_URL" > schema.sql
 
 # Export data only from Dev
-pg_dump --data-only --no-acl --no-owner \
-  "$(railway variables get DATABASE_URL)" \
-  > data.sql
+railway run -- pg_dump --data-only --no-acl --no-owner "$DATABASE_URL" > data.sql
 
 # Apply to Production (first schema, then data)
-railway environment use production
-
-# Create tables
-psql "$(railway variables get DATABASE_URL)" < schema.sql
-
-# Populate data
-psql "$(railway variables get DATABASE_URL)" < data.sql
+railway env link production
+railway run -- psql "$DATABASE_URL" < schema.sql
+railway run -- psql "$DATABASE_URL" < data.sql
 ```
 
-#### Quick One-Liner Migration
-
-For quick migrations when you're confident:
+#### Railway CLI Variable Commands Reference
 
 ```bash
-# Dev to Prod in one command (use with extreme caution)
-railway environment use dev && \
-pg_dump -Fc --no-acl --no-owner "$(railway variables get DATABASE_URL)" | \
-railway environment use production && \
-pg_restore --clean --if-exists --no-acl --no-owner \
-  -d "$(railway variables get DATABASE_URL)" /dev/stdin
+# List all variables (shows both names and values)
+railway variables
+
+# Get a specific variable (v4.x syntax - outputs with formatting)
+railway variables DATABASE_URL
+
+# View variables without switching environments
+railway variables --environment=dev
+railway variables --environment=production
 ```
 
-#### Railway CLI Environment Variables Reference
-
-```bash
-# Get DATABASE_URL from any environment without switching
-railway variables get DATABASE_URL --environment=dev
-railway variables get DATABASE_URL --environment=production
-
-# List all database-related variables
-railway variables | grep -i database
-```
+**Note:** In Railway CLI v4.x, use `railway run` for database operations as it automatically handles authentication and injects the correct `DATABASE_URL`. The public URL (`DATABASE_PUBLIC_URL`) is for external connections from your local machine.
 
 ---
 
@@ -281,18 +296,17 @@ When you need to make Production exactly match Development:
 # WARNING: This replaces ALL data in production with dev data
 
 echo "=== Railway Dev → Prod Sync ==="
+
 echo "Step 1: Exporting from Dev..."
-railway environment use dev
-DEV_URL=$(railway variables get DATABASE_URL)
-pg_dump -Fc --no-acl --no-owner "$DEV_URL" -f /tmp/dev_backup.dump
+railway env link dev
+railway run -- pg_dump -Fc --no-acl --no-owner "$DATABASE_URL" -f /tmp/dev_backup.dump
 
 echo "Step 2: Importing to Production..."
-railway environment use production
-PROD_URL=$(railway variables get DATABASE_URL)
-pg_restore --clean --if-exists --no-acl --no-owner -d "$PROD_URL" /tmp/dev_backup.dump
+railway env link production
+railway run -- pg_restore --clean --if-exists --no-acl --no-owner -d "$DATABASE_URL" /tmp/dev_backup.dump
 
 echo "Step 3: Verifying..."
-psql "$PROD_URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+railway run -- psql "$DATABASE_URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
 
 echo "✓ Sync complete!"
 rm /tmp/dev_backup.dump
@@ -300,7 +314,7 @@ rm /tmp/dev_backup.dump
 
 ### Workflow 2: Refresh Local from Railway
 
-When your local database is stale and needs to match Railway Dev:
+When your local database is stale and needs to match Railway Dev (using public URL):
 
 ```bash
 #!/bin/bash
@@ -308,11 +322,12 @@ When your local database is stale and needs to match Railway Dev:
 
 echo "=== Refreshing Local Database from Railway Dev ==="
 
-# Export from Railway
-railway environment use dev
-RAILWAY_URL=$(railway variables get DATABASE_URL)
+# Get the public URL from Railway (or copy from Dashboard)
+railway env link dev
 echo "Exporting from Railway Dev..."
-pg_dump --no-acl --no-owner "$RAILWAY_URL" > /tmp/railway_sync.sql
+
+# Use railway run to export, or use the public URL directly
+railway run -- pg_dump --no-acl --no-owner "$DATABASE_URL" > /tmp/railway_sync.sql
 
 # Reset local database
 echo "Resetting local database..."
@@ -342,10 +357,10 @@ echo "=== Comparing Dev vs Production ==="
 # Dev row counts
 echo ""
 echo "--- DEV Environment ---"
-railway environment use dev
-psql "$(railway variables get DATABASE_URL)" -c "
+railway env link dev
+railway run -- psql "$DATABASE_URL" -c "
 SELECT relname as table_name, n_live_tup as row_count
-FROM pg_stat_user_tables 
+FROM pg_stat_user_tables
 WHERE schemaname = 'public'
 ORDER BY relname;
 "
@@ -353,10 +368,10 @@ ORDER BY relname;
 # Prod row counts
 echo ""
 echo "--- PROD Environment ---"
-railway environment use production
-psql "$(railway variables get DATABASE_URL)" -c "
+railway env link production
+railway run -- psql "$DATABASE_URL" -c "
 SELECT relname as table_name, n_live_tup as row_count
-FROM pg_stat_user_tables 
+FROM pg_stat_user_tables
 WHERE schemaname = 'public'
 ORDER BY relname;
 "
@@ -373,11 +388,9 @@ This workflow refreshes your local database to match Railway's current state.
 #### Option A: Using Railway CLI (Recommended)
 
 ```bash
-# Step 1: Export from Railway Dev environment
-railway environment use dev
-pg_dump --no-acl --no-owner \
-  "$(railway variables get DATABASE_URL)" \
-  > railway_dev_sync.sql
+# Step 1: Export from Railway Dev environment using railway run
+railway env link dev
+railway run -- pg_dump --no-acl --no-owner "$DATABASE_URL" > railway_dev_sync.sql
 
 # Step 2: Reset your local database (Docker example)
 docker compose down -v  # Removes the old volume
@@ -391,16 +404,16 @@ psql "postgresql://postgres:postgres@localhost:5432/planadvisor" \
 psql "postgresql://postgres:postgres@localhost:5432/planadvisor" -c "\dt"
 ```
 
-#### Option B: Using Railway Dashboard + Manual URL
+#### Option B: Using Railway Dashboard + Public URL
 
 ```bash
-# Get DATABASE_URL from Railway Dashboard:
-# Dashboard → Dev Environment → Postgres Service → Connect tab → Copy URL
+# Get DATABASE_PUBLIC_URL from Railway Dashboard:
+# Dashboard → Dev Environment → Postgres Service → Connect tab → Copy "Public URL"
+# Example: postgresql://postgres:PASSWORD@switchback.proxy.rlwy.net:50670/railway
 
-# Export from Railway Dev
-pg_dump --no-acl --no-owner \
-  "postgresql://postgres:PASSWORD@HOST:5432/railway" \
-  > railway_dev_sync.sql
+# Export from Railway Dev using the public URL
+export RAILWAY_PUBLIC_URL="postgresql://postgres:PASSWORD@HOST:PORT/railway"
+pg_dump --no-acl --no-owner "$RAILWAY_PUBLIC_URL" > railway_dev_sync.sql
 
 # Import to local
 psql "postgresql://postgres:postgres@localhost:5432/planadvisor" \
@@ -418,12 +431,12 @@ pg_dump --no-acl --no-owner \
   > local_backup.sql
 
 # Import to Railway Dev (safer to test here first)
-railway environment use dev
-psql "$(railway variables get DATABASE_URL)" < local_backup.sql
+railway env link dev
+railway run -- psql "$DATABASE_URL" < local_backup.sql
 
 # If it works, then import to production (use with caution!)
-railway environment use production
-psql "$(railway variables get DATABASE_URL)" < local_backup.sql
+railway env link production
+railway run -- psql "$DATABASE_URL" < local_backup.sql
 ```
 
 ---
