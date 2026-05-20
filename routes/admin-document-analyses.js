@@ -118,17 +118,26 @@ router.get('/document-analyses/:id', requireAuth, requireAdmin, async (req, res)
     // Parse the analysis_json to extract rules, plans, assumptions, etc.
     const analysisJson = row.analysis_json || {};
 
+    // Safely extract arrays from analysis_json with fallbacks
+    const safeArray = (obj, key) => Array.isArray(obj?.[key]) ? obj[key] : [];
+    const safeGapsConflicts = (obj, key) => {
+      if (obj?.gaps_and_conflicts && typeof obj.gaps_and_conflicts === 'object') {
+        return Array.isArray(obj.gaps_and_conflicts[key]) ? obj.gaps_and_conflicts[key] : [];
+      }
+      return [];
+    };
+
     const data = {
       id: row.id,
       profile_id: row.profile_id,
-      country: row.country_name,
-      country_code: row.country_code,
-      provider: row.provider_name,
-      provider_type: row.provider_type,
+      country: row.country_name || 'Unknown',
+      country_code: row.country_code || '—',
+      provider: row.provider_name || 'Unknown',
+      provider_type: row.provider_type || '',
       version: 'v1.0', // Could be fetched from calculation_profiles
       created_at: row.created_at,
       created_by: row.created_by_name || row.created_by_email || 'Unknown',
-      status: row.status,
+      status: row.status || 'pending_review',
       summary: row.summary || analysisJson.summary || '',
       guardrail_audit: row.guardrail_audit || {
         eu_ai_act_check: 'passed',
@@ -138,12 +147,22 @@ router.get('/document-analyses/:id', requireAuth, requireAdmin, async (req, res)
         blocked_documents: [],
         processing_timestamp: row.created_at,
       },
-      rules: analysisJson.rules || analysisJson.transaction_rules || [],
-      plans: analysisJson.plans || [],
-      assumptions: analysisJson.assumptions || [],
-      ambiguities: analysisJson.ambiguities || analysisJson.gaps_and_conflicts?.ambiguities || [],
-      conflicts: analysisJson.conflicts || analysisJson.gaps_and_conflicts?.conflicts || [],
+      rules: safeArray(analysisJson, 'rules') || safeArray(analysisJson, 'transaction_rules') || [],
+      plans: safeArray(analysisJson, 'plans') || [],
+      assumptions: safeArray(analysisJson, 'assumptions') || [],
+      ambiguities: safeArray(analysisJson, 'ambiguities') || safeGapsConflicts(analysisJson, 'ambiguities') || [],
+      conflicts: safeArray(analysisJson, 'conflicts') || safeGapsConflicts(analysisJson, 'conflicts') || [],
     };
+
+    console.log(`[document-analyses] Returning detail for ${id}:`, {
+      country: data.country,
+      provider: data.provider,
+      rulesCount: data.rules.length,
+      plansCount: data.plans.length,
+      assumptionsCount: data.assumptions.length,
+      ambiguitiesCount: data.ambiguities.length,
+      conflictsCount: data.conflicts.length,
+    });
 
     res.json({
       success: true,
