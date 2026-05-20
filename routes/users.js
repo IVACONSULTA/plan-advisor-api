@@ -67,6 +67,37 @@ router.post('/users', requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
+ * GET /api/admin/users/:id
+ * Admin only — get a single user by ID.
+ */
+router.get('/users/:id', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rows } = await db.query(
+      `SELECT up.id, up.email, up.full_name, up.role,
+              up.active, up.created_at,
+              c.id   AS company_id,
+              c.name AS company_name,
+              c.type AS company_type,
+              (SELECT COUNT(*)::int FROM ai_usage_logs l
+                 WHERE l.user_id = up.id
+                   AND l.created_at >= date_trunc('month', NOW())) AS ai_calls_this_month
+       FROM users_profile up
+       LEFT JOIN companies c ON c.id = up.company_id
+       WHERE up.id = $1`,
+      [id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[GET /users/:id]', err);
+    res.status(500).json({ error: 'Failed to fetch user.' });
+  }
+});
+
+/**
  * PATCH /api/admin/users/:id
  * Admin only — update role, company, or active status.
  */
