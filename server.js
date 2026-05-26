@@ -47,8 +47,36 @@ app.get('/live', (_req, res) => {
 
 // ─── Security middleware ─────────────────────────────────────────────────────
 app.use(helmet());
+
+// CORS configuration - supports multiple origins for Netlify deploy previews
+const corsOrigins = process.env.FRONTEND_URL 
+  ? process.env.FRONTEND_URL.split(',').map(o => o.trim()) 
+  : ['*'];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches any allowed pattern
+    const allowed = corsOrigins.some(allowedOrigin => {
+      if (allowedOrigin === '*') return true;
+      if (allowedOrigin === origin) return true;
+      // Support wildcard for Netlify deploy previews (e.g., *--planadvisor.netlify.app)
+      if (allowedOrigin.includes('*')) {
+        const pattern = new RegExp(allowedOrigin.replace(/\*/g, '.*'));
+        return pattern.test(origin);
+      }
+      return false;
+    });
+    
+    if (allowed) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Blocked origin: ${origin}, allowed: ${corsOrigins.join(', ')}`);
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    }
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
