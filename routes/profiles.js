@@ -166,6 +166,58 @@ router.get('/profiles', requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
+ * POST /api/admin/profiles/:id/modify
+ * Admin only — reopen an active profile for document upload and AI re-analysis.
+ * Sets status to pending_approval and ends the active period (hidden from customer calculator).
+ */
+router.post('/profiles/:id/modify', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const profileResult = await db.query(
+      `SELECT * FROM calculation_profiles WHERE id = $1`,
+      [id]
+    );
+
+    if (!profileResult.rows.length) {
+      return res.status(404).json({ error: 'Profile not found.' });
+    }
+
+    const profile = profileResult.rows[0];
+
+    if (profile.status !== 'active') {
+      return res.status(409).json({
+        error: 'modify_not_allowed',
+        reason: `Only active profiles can be modified. Current status: ${profile.status}.`,
+      });
+    }
+
+    const { rows } = await db.query(
+      `UPDATE calculation_profiles
+       SET status = 'pending_approval',
+           active_to = CURRENT_DATE
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    await logAudit({
+      userId:     req.user.id,
+      action:     'modify_profile',
+      entityType: 'calculation_profile',
+      entityId:   id,
+      beforeJson: { status: profile.status, active_from: profile.active_from, active_to: profile.active_to },
+      afterJson:  { status: 'pending_approval', active_to: rows[0].active_to },
+    });
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[POST /profiles/:id/modify]', err);
+    res.status(500).json({ error: 'Failed to set profile to pending approval.' });
+  }
+});
+
+/**
  * POST /api/admin/profiles/:id/activate
  * Admin only — activate a profile after validation.
  * Preconditions: ≥1 approved rule, ≥1 approved plan, no critical conflicts.
