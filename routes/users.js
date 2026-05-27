@@ -144,4 +144,22 @@ router.patch('/users/:id', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/admin/companies
+ * Admin only — list all companies for dropdowns.
+ */
+router.get('/companies', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, name, type, created_at
+       FROM companies
+       ORDER BY name ASC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /companies]', err);
+    res.status(500).json({ error: 'Failed to fetch companies.' });
+  }
+});
+
 module.exports = router;
