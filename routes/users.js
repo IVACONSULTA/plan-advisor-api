@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../lib/db');
 const { requireAuth, requireAdmin } = require('../lib/supabase');
+const { createClient } = require('@supabase/supabase-js');
 
 /**
  * GET /api/admin/users
@@ -30,8 +31,116 @@ router.get('/users', requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
- * POST /api/admin/users
- * Admin only — create a users_profile entry after creating the user in Supabase Auth.
+ * POST /api/admin/users/create
+ * Admin only — create a new user in Supabase Auth AND users_profile atomically.
+ * Requires SUPABASE_SERVICE_ROLE_KEY environment variable.
+ */
+router.post('/users/create', requireAuth, requireAdmin, async (req, res) => {
+  const { email, password, full_name, role, company_id } = req.body;
+
+  // Validation
+  if (!email || !password || !role) {
+    return res.status(400).json({ error: 'email, password, and role are required.' });
+  }
+
+  const validRoles = ['admin', 'internal', 'client'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({ error: `role must be one of: ${validRoles.join(', ')}.` });
+  }
+
+  if (role === 'client' && !company_id) {
+    return res.status(400).json({ error: 'company_id is required for client users.' });
+  }
+
+  // Check for service role key
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    return res.status(503).json({
+      error: 'Service not configured',
+      message: 'SUPABASE_SERVICE_ROLE_KEY is not set. Cannot create Supabase Auth users.'
+    });
+  }
+
+  // Create admin client with service role
+  const supabaseAdmin = createClient(
+    process.env.SUPABASE_URL,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  );
+
+  try {
+    // Step 1: Create user in Supabase Auth
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // Auto-confirm email
+      user_metadata: {
+        full_name: full_name || null,
+        role: role
+      }
+    });
+
+    if (authError) {
+      console.error('[POST /users/create] Supabase auth error:', authError);
+      return res.status(400).json({
+        error: 'Failed to create Supabase Auth user',
+        message: authError.message,
+        code: authError.code
+      });
+    }
+
+    const supabaseUserId = authData.user.id;
+    console.log(`[POST /users/create] Created Supabase user: ${supabaseUserId}`);
+
+    // Step 2: Create user_profile in Railway PostgreSQL
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO users_profile (id, email, full_name, role, company_id, active)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, email, full_name, role, company_id, active, created_at`,
+        [supabaseUserId, email, full_name || null, role, company_id || null, true]
+      );
+
+      console.log(`[POST /users/create] Created users_profile: ${rows[0].id}`);
+
+      res.status(201).json({
+        ...rows[0],
+        supabase_user_id: supabaseUserId,
+        message: 'User created successfully in both Supabase Auth and users_profile'
+      });
+    } catch (dbErr) {
+      // Rollback: Delete the Supabase user if DB insert fails
+      console.error('[POST /users/create] DB error, rolling back Supabase user:', dbErr);
+
+      const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(supabaseUserId);
+      if (deleteError) {
+        console.error('[POST /users/create] Failed to rollback Supabase user:', deleteError);
+      }
+
+      if (dbErr.code === '23505') {
+        return res.status(409).json({ error: 'User profile already exists for this email or ID.' });
+      }
+
+      return res.status(500).json({
+        error: 'Failed to create user profile in database',
+        message: dbErr.message
+      });
+    }
+  } catch (err) {
+    console.error('[POST /users/create] Unexpected error:', err);
+    res.status(500).json({ error: 'Failed to create user.', message: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/users (legacy)
+ * Admin only — create a users_profile entry after creating the user in Supabase Auth manually.
+ * DEPRECATED: Use POST /users/create instead.
  */
 router.post('/users', requireAuth, requireAdmin, async (req, res) => {
   const { supabase_id, email, full_name, role, company_id } = req.body;
