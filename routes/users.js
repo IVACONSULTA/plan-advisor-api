@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../lib/db');
-const { requireAuth, requireAdmin, supabase } = require('../lib/supabase');
+const { requireAuth, requireAdmin } = require('../lib/supabase');
 const { createClient } = require('@supabase/supabase-js');
 
 /**
@@ -138,9 +138,9 @@ router.post('/users/create', requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
- * POST /api/admin/users
- * Admin only — create a users_profile entry after creating the user in Supabase Auth.
- * DEPRECATED: Use /users/create instead for creating users with Supabase Auth.
+ * POST /api/admin/users (legacy)
+ * Admin only — create a users_profile entry after creating the user in Supabase Auth manually.
+ * DEPRECATED: Use POST /users/create instead.
  */
 router.post('/users', requireAuth, requireAdmin, async (req, res) => {
   const { supabase_id, email, full_name, role, company_id } = req.body;
@@ -322,6 +322,24 @@ router.patch('/users/:id', requireAuth, requireAdmin, async (req, res) => {
 /**
  * GET /api/admin/companies
  * Admin only — list all companies.
+ */
+router.get('/companies', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, name, type, created_at
+       FROM companies
+       ORDER BY name ASC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /companies]', err);
+    res.status(500).json({ error: 'Failed to fetch companies.' });
+  }
+});
+
+/**
+ * GET /api/admin/companies
+ * Admin only — list all companies for dropdowns.
  */
 router.get('/companies', requireAuth, requireAdmin, async (req, res) => {
   try {
